@@ -1,0 +1,52 @@
+// Modelos de dados do Assistente Financeiro.
+// Depois de mexer aqui, rode:  npx prisma migrate dev --name <descricao>
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  login     String   @unique
+  senhaHash String   @map("senha_hash")
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  transacoes Transacao[]
+
+  @@map("usuarios")
+}
+
+/// Um lançamento: dinheiro que entrou (GANHO) ou que saiu (GASTO).
+model Transacao {
+  id        Int      @id @default(autoincrement())
+  usuarioId Int      @map("usuario_id")
+
+  /// Só o dia, sem hora: evita que fuso horário jogue o lançamento para outro mês.
+  data      DateTime @db.Date
+
+  /// Decimal (NUMERIC no Postgres) faz contas exatas com centavos.
+  /// Sempre positivo — quem diz se soma ou subtrai é o campo `tipo`.
+  valor     Decimal  @db.Decimal(12, 2)
+
+  categoria String
+  tipo      TipoTransacao
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  // Apagar um usuário apaga as transações dele junto.
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  // Toda consulta é "transações deste usuário, neste período".
+  @@index([usuarioId, data])
+  @@map("transacoes")
+}
+
+enum TipoTransacao {
+  GASTO
+  GANHO
+}

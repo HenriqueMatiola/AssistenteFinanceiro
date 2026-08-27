@@ -1,0 +1,18 @@
+# Dependências baixadas pelo npm (nunca vão para o Git — são reinstaláveis)
+node_modules/
+
+# Variáveis de ambiente com segredos (senhas, chaves de API)
+.env
+.env.local
+
+# Saída de build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operacional / editor
+.DS_Store
+Thumbs.db

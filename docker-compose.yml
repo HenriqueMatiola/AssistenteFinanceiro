@@ -1,0 +1,29 @@
+# PostgreSQL local para desenvolvimento.
+# Subir:  docker compose up -d
+# Parar:  docker compose down
+# Apagar tudo (inclusive os dados): docker compose down -v
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: assfinanceiro-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: assfin
+      POSTGRES_PASSWORD: assfin_dev
+      POSTGRES_DB: assfinanceiro
+    ports:
+      # <porta na sua máquina>:<porta dentro do container>
+      - "5432:5432"
+    volumes:
+      # Guarda os dados fora do container, para não perder ao reiniciar
+      - assfinanceiro_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # O Docker só considera o banco "pronto" quando este comando passa
+      test: ["CMD-SHELL", "pg_isready -U assfin -d assfinanceiro"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  assfinanceiro_pgdata:

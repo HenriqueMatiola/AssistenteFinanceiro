@@ -1,0 +1,2 @@
+# Normaliza fim de linha: no Git fica sempre LF, no disco fica o do seu sistema.
+* text=auto eol=lf

@@ -1,0 +1,232 @@
+.pagina {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.subtitulo {
+  margin-top: 0;
+  opacity: 0.7;
+}
+
+.cartao {
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  background: rgba(127, 127, 127, 0.06);
+}
+
+.cartao h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.cartao--erro {
+  border-color: #d94a4a;
+  background: rgba(217, 74, 74, 0.1);
+}
+
+.cartao small {
+  opacity: 0.65;
+}
+
+button {
+  font: inherit;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pagina--estreita {
+  max-width: 380px;
+}
+
+.cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cabecalho h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.cabecalho .subtitulo {
+  margin: 0.15rem 0 0;
+}
+
+.campo {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.campo span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.campo input {
+  width: 100%;
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  background: rgba(255, 255, 255, 0.7);
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .campo input {
+    background: rgba(0, 0, 0, 0.25);
+  }
+}
+
+.campo input:focus {
+  outline: 2px solid #4a7fd9;
+  outline-offset: 1px;
+}
+
+.mensagem-erro {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #d94a4a;
+  background: rgba(217, 74, 74, 0.12);
+  font-size: 0.9rem;
+}
+
+form button {
+  width: 100%;
+}
+
+/* --- Abas de navegação --- */
+.abas {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.aba {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.5rem 0.9rem;
+  opacity: 0.65;
+}
+
+.aba--ativa {
+  border-bottom-color: #4a7fd9;
+  opacity: 1;
+  font-weight: 600;
+}
+
+/* --- Formulários --- */
+.linha-de-campos {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.linha-de-campos .campo {
+  flex: 1;
+  min-width: 0;
+}
+
+.campo select {
+  width: 100%;
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  background: rgba(255, 255, 255, 0.7);
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .campo select {
+    background: rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Em telas estreitas, os campos empilham em vez de espremer. */
+@media (max-width: 520px) {
+  .linha-de-campos {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+/* --- Tabela de lançamentos --- */
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.tabela th,
+.tabela td {
+  padding: 0.5rem 0.4rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  text-align: left;
+}
+
+.tabela th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.tabela tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.alinhado-direita {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ganho {
+  color: #1f8a4c;
+  font-variant-numeric: tabular-nums;
+}
+
+.gasto {
+  color: #c2413f;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ganho {
+    color: #57c785;
+  }
+  .gasto {
+    color: #ef7b79;
+  }
+}
+
+.vazio {
+  opacity: 0.65;
+  font-style: italic;
+}
