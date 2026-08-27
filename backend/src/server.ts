@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from './prisma.ts';
 import { gerarToken, exigirLogin } from './auth.ts';
 import { rotasDeTransacoes } from './rotas/transacoes.ts';
+import { rotasDeResumo } from './rotas/resumo.ts';
 
 const app = express();
 
@@ -115,6 +116,9 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
 // Lançamentos. O exigirLogin fica no grupo inteiro: nenhuma rota de
 // transação existe sem autenticação, nem por esquecimento.
 app.use('/api/transacoes', exigirLogin, rotasDeTransacoes);
+
+// Totais e agrupamentos do Dashboard.
+app.use('/api/resumo', exigirLogin, rotasDeResumo);
 
 const porta = Number(process.env.PORT ?? 3001);
 

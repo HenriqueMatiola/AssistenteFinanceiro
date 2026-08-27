@@ -230,3 +230,119 @@ form button {
   opacity: 0.65;
   font-style: italic;
 }
+
+/* --- Dashboard --- */
+
+/* Campo único dentro de um cartão: sem a margem que separa um campo do outro. */
+.campo--sozinho {
+  margin-bottom: 0;
+  max-width: 220px;
+}
+
+/* O número que o dashboard existe para mostrar. Grande de propósito: é o que
+   se lê de relance, antes de qualquer outra coisa na tela. */
+.figura-destaque {
+  margin: 0.25rem 0 1rem;
+  font-size: 2.75rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  /* Faz os algarismos terem todos a mesma largura, então o número não
+     "dança" quando muda de mês. */
+  font-variant-numeric: tabular-nums;
+}
+
+.totais {
+  display: flex;
+  gap: 2rem;
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  padding-top: 0.85rem;
+}
+
+.total {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.total__rotulo {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.total__valor {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* --- Gráfico de gastos por categoria ---
+   Barras horizontais, e não pizza: os nomes das categorias são longos
+   ("Alimentação", "Investimentos") e cabem à esquerda de uma barra, mas não
+   dentro de uma fatia. Todas as barras têm a MESMA cor de propósito — o que
+   distingue uma categoria da outra é o comprimento e o rótulo, então pintar
+   cada uma de um tom gastaria a cor repetindo o que o tamanho já diz. */
+.grafico-de-barras {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.barra__topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.barra__nome {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barra__valor {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.barra__fatia {
+  opacity: 0.55;
+}
+
+/* O trilho é a régua: vai de 0 até o maior gasto do mês. Sem ele, não dá para
+   ver o quanto falta para a barra maior. */
+.barra__trilho {
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(128, 128, 128, 0.16);
+  overflow: hidden;
+}
+
+.barra__preenchimento {
+  height: 100%;
+  border-radius: 5px;
+  background: #c2413f;
+  transition: width 0.25s ease-out;
+}
+
+@media (prefers-color-scheme: dark) {
+  .barra__preenchimento {
+    /* Um passo mais escuro que o vermelho usado em texto: como preenchimento
+       de área, aquele ficava claro demais contra o fundo escuro. */
+    background: #e34948;
+  }
+}
+
+/* Quem prefere menos movimento na tela não vê a barra crescer. */
+@media (prefers-reduced-motion: reduce) {
+  .barra__preenchimento {
+    transition: none;
+  }
+}

@@ -137,3 +137,34 @@ export async function criarTransacao(nova: NovaTransacao): Promise<Transacao> {
   });
   return resposta.transacao;
 }
+
+// --- Resumo do mês (Dashboard) ----------------------------------------------
+
+export interface ResumoDoMes {
+  /** Formato "AAAA-MM". */
+  mes: string;
+  entradas: number;
+  saidas: number;
+  /** Entradas menos saídas. Negativo quando se gastou mais do que entrou. */
+  saldo: number;
+}
+
+export interface GastoPorCategoria {
+  categoria: string;
+  total: number;
+}
+
+export interface GastosPorCategoria {
+  mes: string;
+  /** Já vem ordenado do maior para o menor pelo backend. */
+  categorias: GastoPorCategoria[];
+  total: number;
+}
+
+export async function buscarResumo(mes: string): Promise<ResumoDoMes> {
+  return chamar(`/api/resumo?mes=${encodeURIComponent(mes)}`);
+}
+
+export async function buscarGastosPorCategoria(mes: string): Promise<GastosPorCategoria> {
+  return chamar(`/api/resumo/categorias?mes=${encodeURIComponent(mes)}`);
+}

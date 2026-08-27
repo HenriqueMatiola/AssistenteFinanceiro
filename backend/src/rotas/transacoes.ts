@@ -9,11 +9,9 @@ import { Router } from 'express';
 import { prisma } from '../prisma.ts';
 import { idDoUsuarioLogado } from '../auth.ts';
 import { TipoTransacao } from '../generated/prisma/enums.ts';
+import { ErroDeValidacao, intervaloDoMes } from '../validacao.ts';
 
 export const rotasDeTransacoes = Router();
-
-/** Erro de dado mal preenchido pelo cliente: vira resposta 400. */
-class ErroDeValidacao extends Error {}
 
 // --- Validação --------------------------------------------------------------
 
@@ -126,16 +124,7 @@ rotasDeTransacoes.get('/', async (req, res) => {
     }
 
     if (typeof mes === 'string' && mes !== '') {
-      if (!/^\d{4}-\d{2}$/.test(mes)) {
-        throw new ErroDeValidacao('Mês inválido. Use o formato AAAA-MM.');
-      }
-      const [ano, numeroDoMes] = mes.split('-').map(Number) as [number, number];
-      // Do dia 1 deste mês (inclusive) até o dia 1 do mês seguinte (exclusive).
-      // O mês 12 vira mês 0 do ano seguinte automaticamente no Date.UTC.
-      filtro.data = {
-        gte: new Date(Date.UTC(ano, numeroDoMes - 1, 1)),
-        lt: new Date(Date.UTC(ano, numeroDoMes, 1)),
-      };
+      filtro.data = intervaloDoMes(mes);
     }
 
     const transacoes = await prisma.transacao.findMany({

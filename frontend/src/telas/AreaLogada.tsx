@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import type { Usuario } from '../api.ts';
+import Dashboard from './Dashboard.tsx';
 import Lancamentos from './Lancamentos.tsx';
 import Inicio from './Inicio.tsx';
 
-// Navegação simples por estado. Quando houver mais telas (Dashboard, Projeção,
+// Navegação simples por estado. Quando houver mais telas (Projeção,
 // Investimentos), vale trocar por um roteador de verdade, com URL própria.
-type Aba = 'lancamentos' | 'inicio';
+type Aba = 'dashboard' | 'lancamentos' | 'inicio';
+
+const ABAS: { id: Aba; rotulo: string }[] = [
+  { id: 'dashboard', rotulo: 'Dashboard' },
+  { id: 'lancamentos', rotulo: 'Lançamentos' },
+  { id: 'inicio', rotulo: 'Início' },
+];
 
 interface Props {
   usuario: Usuario;
@@ -13,7 +20,9 @@ interface Props {
 }
 
 function AreaLogada({ usuario, aoSair }: Props) {
-  const [aba, setAba] = useState<Aba>('lancamentos');
+  // Abre no Dashboard: é a visão que responde "como estou este mês?" sem
+  // precisar de nenhum clique.
+  const [aba, setAba] = useState<Aba>('dashboard');
 
   return (
     <main className="pagina">
@@ -30,23 +39,21 @@ function AreaLogada({ usuario, aoSair }: Props) {
       </header>
 
       <nav className="abas">
-        <button
-          type="button"
-          className={aba === 'lancamentos' ? 'aba aba--ativa' : 'aba'}
-          onClick={() => setAba('lancamentos')}
-        >
-          Lançamentos
-        </button>
-        <button
-          type="button"
-          className={aba === 'inicio' ? 'aba aba--ativa' : 'aba'}
-          onClick={() => setAba('inicio')}
-        >
-          Início
-        </button>
+        {ABAS.map(({ id, rotulo }) => (
+          <button
+            key={id}
+            type="button"
+            className={aba === id ? 'aba aba--ativa' : 'aba'}
+            onClick={() => setAba(id)}
+          >
+            {rotulo}
+          </button>
+        ))}
       </nav>
 
-      {aba === 'lancamentos' ? <Lancamentos /> : <Inicio />}
+      {aba === 'dashboard' && <Dashboard />}
+      {aba === 'lancamentos' && <Lancamentos />}
+      {aba === 'inicio' && <Inicio />}
     </main>
   );
 }

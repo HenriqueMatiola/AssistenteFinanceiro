@@ -23,8 +23,8 @@ function Inicio() {
       <div className="cartao">
         <h2>Próximos passos</h2>
         <p>
-          Login e lançamentos estão prontos. O Dashboard com totais e gráfico, a
-          Projeção e os Investimentos chegam nas próximas etapas.
+          Login, lançamentos e dashboard estão prontos. A Projeção e os
+          Investimentos chegam nas próximas etapas.
         </p>
       </div>
 
