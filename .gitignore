@@ -16,3 +16,7 @@ npm-debug.log*
 # Sistema operacional / editor
 .DS_Store
 Thumbs.db
+
+.claude
+.gitattributes
+.docs
