@@ -32,40 +32,42 @@ function Login({ aoEntrar }: Props) {
   }
 
   return (
-    <main className="pagina pagina--estreita">
-      <h1>Assistente Financeiro</h1>
-      <p className="subtitulo">Entre com sua conta</p>
+    <main className="entrada">
+      <div className="entrada__caixa">
+        <h1 className="entrada__marca">Assistente Financeiro</h1>
+        <p className="entrada__sub">Entre para ver suas contas do mês.</p>
 
-      <form onSubmit={aoEnviar} className="cartao">
-        <label className="campo">
-          <span>Login</span>
-          <input
-            type="text"
-            value={login}
-            onChange={(e) => setLogin(e.target.value)}
-            autoComplete="username"
-            autoFocus
-            required
-          />
-        </label>
+        <form onSubmit={aoEnviar} className="cartao">
+          <label className="campo">
+            <span>Login</span>
+            <input
+              type="text"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
+              autoComplete="username"
+              autoFocus
+              required
+            />
+          </label>
 
-        <label className="campo">
-          <span>Senha</span>
-          <input
-            type="password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </label>
+          <label className="campo">
+            <span>Senha</span>
+            <input
+              type="password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
 
-        {erro && <p className="mensagem-erro">{erro}</p>}
+          {erro && <p className="mensagem-erro">{erro}</p>}
 
-        <button type="submit" disabled={enviando}>
-          {enviando ? 'Entrando…' : 'Entrar'}
-        </button>
-      </form>
+          <button type="submit" disabled={enviando}>
+            {enviando ? 'Entrando…' : 'Entrar'}
+          </button>
+        </form>
+      </div>
     </main>
   );
 }

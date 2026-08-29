@@ -3,8 +3,11 @@ import {
   alterarStatusTransacao,
   criarTransacao,
   excluirTransacao,
+  lancarRecorrencia,
+  listarPrevistas,
   listarTransacoes,
   type ClassificacaoGasto,
+  type RecorrenciaPrevista,
   type StatusTransacao,
   type TipoTransacao,
   type Transacao,
@@ -13,7 +16,6 @@ import {
   formatarData,
   formatarDinheiro,
   hojeISO,
-  mesAtualISO,
   rotuloDaAcaoDeStatus,
   rotuloDaParcela,
   rotuloDoStatus,
@@ -37,13 +39,29 @@ const CATEGORIAS_SUGERIDAS = [
 // Não é lista fixa porque os cartões de cada pessoa são outros.
 const FORMAS_SUGERIDAS = ['Pix', 'Dinheiro', 'Débito', 'Cartão de crédito', 'Boleto'];
 
-function Lancamentos() {
+/**
+ * A lista mistura duas coisas: lançamentos de verdade e contas previstas pelas
+ * recorrências, que ainda não foram lançadas. Elas aparecem juntas porque, na
+ * hora de fechar o mês, o que importa é a conta — não de onde ela veio.
+ */
+type ItemDaLista =
+  | { chave: string; data: string; especie: 'lancamento'; transacao: Transacao }
+  | { chave: string; data: string; especie: 'previsao'; previsao: RecorrenciaPrevista };
+
+interface Props {
+  /** Mês em foco, escolhido na trilha do topo. Formato "AAAA-MM". */
+  mes: string;
+  /** Usado quando um lançamento cai fora do mês em foco. */
+  aoTrocarMes: (mes: string) => void;
+}
+
+function Lancamentos({ mes, aoTrocarMes }: Props) {
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
+  const [previstas, setPrevistas] = useState<RecorrenciaPrevista[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroDaLista, setErroDaLista] = useState<string | null>(null);
 
   // Filtros
-  const [mes, setMes] = useState(mesAtualISO());
   const [tipoFiltrado, setTipoFiltrado] = useState<TipoTransacao | ''>('');
   const [statusFiltrado, setStatusFiltrado] = useState<StatusTransacao | ''>('');
 
@@ -62,6 +80,9 @@ function Lancamentos() {
   const [erroDoFormulario, setErroDoFormulario] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  // Id da recorrência sendo lançada, para desabilitar só o botão dela.
+  const [lancando, setLancando] = useState<number | null>(null);
+
   // Muda quando queremos recarregar sem que os filtros tenham mudado
   // (por exemplo, logo depois de criar um lançamento).
   const [versaoDaLista, setVersaoDaLista] = useState(0);
@@ -69,15 +90,23 @@ function Lancamentos() {
   const quantidadeDeParcelas = Number(parcelas) || 1;
   const ehParcelado = quantidadeDeParcelas > 1;
 
+  // Uma conta prevista é, por definição, uma conta que ainda não aconteceu.
+  // Filtrando por "pago/recebido", não há previsão que se qualifique.
+  const mostrarPrevisoes = statusFiltrado !== 'CONCLUIDA';
+
   useEffect(() => {
     // Se os filtros mudarem antes da resposta chegar, esta flag descarta o
     // resultado atrasado — senão uma busca antiga poderia sobrescrever a nova.
     let cancelado = false;
 
-    listarTransacoes({ mes, tipo: tipoFiltrado, status: statusFiltrado })
-      .then((lista) => {
+    Promise.all([
+      listarTransacoes({ mes, tipo: tipoFiltrado, status: statusFiltrado }),
+      mostrarPrevisoes ? listarPrevistas(mes) : Promise.resolve([]),
+    ])
+      .then(([lista, contasPrevistas]) => {
         if (cancelado) return;
         setTransacoes(lista);
+        setPrevistas(contasPrevistas);
         setErroDaLista(null);
       })
       .catch((e: unknown) => {
@@ -91,13 +120,7 @@ function Lancamentos() {
     return () => {
       cancelado = true;
     };
-  }, [mes, tipoFiltrado, statusFiltrado, versaoDaLista]);
-
-  /** Troca um filtro já mostrando o aviso de carregamento. */
-  function trocarMes(novoMes: string) {
-    setCarregando(true);
-    setMes(novoMes);
-  }
+  }, [mes, tipoFiltrado, statusFiltrado, versaoDaLista, mostrarPrevisoes]);
 
   function trocarTipoFiltrado(novoTipo: TipoTransacao | '') {
     setCarregando(true);
@@ -142,7 +165,7 @@ function Lancamentos() {
       });
 
       if (criadas.length > 1) {
-        // Só as parcelas do mês filtrado aparecem na lista; sem este aviso,
+        // Só as parcelas do mês em foco aparecem na lista; sem este aviso,
         // parece que 11 delas se perderam.
         setAviso(
           `${criadas.length} parcelas criadas, de ${formatarData(criadas[0]?.data ?? data)} ` +
@@ -157,11 +180,12 @@ function Lancamentos() {
       setCategoria('');
       setParcelas('1');
 
-      // Se o lançamento caiu fora do mês filtrado, mostra o mês dele para
-      // que ele não "suma" logo depois de ser criado.
+      // Se o lançamento caiu fora do mês em foco, mostra o mês dele para que
+      // ele não "suma" logo depois de ser criado.
       const mesDoLancamento = data.slice(0, 7);
       if (mesDoLancamento !== mes) {
-        trocarMes(mesDoLancamento);
+        setCarregando(true);
+        aoTrocarMes(mesDoLancamento);
       } else {
         recarregarLista();
       }
@@ -182,6 +206,24 @@ function Lancamentos() {
       recarregarLista();
     } catch (e) {
       setErroDaLista(e instanceof Error ? e.message : 'Não consegui atualizar.');
+    }
+  }
+
+  /**
+   * Converte a conta prevista num lançamento de verdade, já marcado como pago.
+   * O total do mês não muda: a previsão já contava no balanço.
+   */
+  async function aoLancarPrevisao(previsao: RecorrenciaPrevista) {
+    setErroDaLista(null);
+    setLancando(previsao.id);
+
+    try {
+      await lancarRecorrencia(previsao.id, mes);
+      recarregarLista();
+    } catch (e) {
+      setErroDaLista(e instanceof Error ? e.message : 'Não consegui lançar a conta.');
+    } finally {
+      setLancando(null);
     }
   }
 
@@ -214,6 +256,32 @@ function Lancamentos() {
       setErroDaLista(e instanceof Error ? e.message : 'Não consegui excluir.');
     }
   }
+
+  // Junta lançamentos e previsões numa lista só, ordenada por data como
+  // qualquer extrato. O filtro de tipo vale para as duas origens; o de
+  // situação já foi aplicado ao decidir se buscava previsões.
+  const itens: ItemDaLista[] = [
+    ...transacoes.map(
+      (t): ItemDaLista => ({
+        chave: `t${t.id}`,
+        data: t.data,
+        especie: 'lancamento',
+        transacao: t,
+      })
+    ),
+    ...previstas
+      .filter((p) => !tipoFiltrado || p.tipo === tipoFiltrado)
+      .map(
+        (p): ItemDaLista => ({
+          chave: `p${p.id}`,
+          data: p.data,
+          especie: 'previsao',
+          previsao: p,
+        })
+      ),
+  ].sort((a, b) => b.data.localeCompare(a.data));
+
+  const quantidadePrevista = itens.filter((i) => i.especie === 'previsao').length;
 
   return (
     <>
@@ -360,12 +428,15 @@ function Lancamentos() {
       <section className="cartao">
         <h2>Lançamentos</h2>
 
-        <div className="linha-de-campos">
-          <label className="campo">
-            <span>Mês</span>
-            <input type="month" value={mes} onChange={(e) => trocarMes(e.target.value)} />
-          </label>
+        {quantidadePrevista > 0 && (
+          <p className="explicacao">
+            As linhas marcadas como <span className="etiqueta">Previsto</span> vêm das suas
+            recorrências e ainda não foram lançadas. Ao marcá-las como pagas, viram lançamento —
+            e o total do mês não muda, porque a previsão já contava no balanço.
+          </p>
+        )}
 
+        <div className="linha-de-campos linha-de-campos--filtros">
           <label className="campo">
             <span>Tipo</span>
             <select
@@ -392,14 +463,14 @@ function Lancamentos() {
         </div>
 
         {aviso && <p className="mensagem-aviso">{aviso}</p>}
-        {carregando && <p>Carregando…</p>}
+        {carregando && <p className="vazio">Carregando…</p>}
         {erroDaLista && <p className="mensagem-erro">{erroDaLista}</p>}
 
-        {!carregando && !erroDaLista && transacoes.length === 0 && (
+        {!carregando && !erroDaLista && itens.length === 0 && (
           <p className="vazio">Nenhum lançamento neste filtro.</p>
         )}
 
-        {!carregando && !erroDaLista && transacoes.length > 0 && (
+        {!carregando && !erroDaLista && itens.length > 0 && (
           <div className="tabela-rolavel">
             <table className="tabela">
               <thead>
@@ -414,11 +485,54 @@ function Lancamentos() {
                 </tr>
               </thead>
               <tbody>
-                {transacoes.map((t) => {
+                {itens.map((item) => {
+                  // --- Conta prevista: ainda não existe como lançamento ---
+                  if (item.especie === 'previsao') {
+                    const p = item.previsao;
+
+                    return (
+                      <tr key={item.chave} className="linha--prevista">
+                        <td>{formatarData(p.data)}</td>
+                        <td>
+                          {p.descricao}
+                          <span className="etiqueta">Previsto</span>
+                        </td>
+                        <td>{p.categoria}</td>
+                        <td>{p.formaDePagamento ?? '—'}</td>
+                        <td
+                          className={`alinhado-direita ${p.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}
+                        >
+                          {p.tipo === 'GANHO' ? '+' : '−'} {formatarDinheiro(p.valor)}
+                        </td>
+                        <td>
+                          <span className="situacao situacao--pendente">
+                            {rotuloDoStatus(p.tipo, 'PENDENTE')}
+                          </span>
+                        </td>
+                        <td className="alinhado-direita">
+                          <div className="acoes">
+                            <button
+                              type="button"
+                              className="botao--discreto"
+                              disabled={lancando === p.id}
+                              onClick={() => aoLancarPrevisao(p)}
+                            >
+                              {lancando === p.id
+                                ? 'Lançando…'
+                                : rotuloDaAcaoDeStatus(p.tipo, 'PENDENTE')}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // --- Lançamento de verdade ---
+                  const t = item.transacao;
                   const parcela = rotuloDaParcela(t.parcelaAtual, t.parcelasTotais);
 
                   return (
-                    <tr key={t.id}>
+                    <tr key={item.chave}>
                       <td>{formatarData(t.data)}</td>
                       <td>
                         {t.descricao}

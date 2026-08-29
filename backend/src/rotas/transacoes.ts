@@ -15,6 +15,7 @@ import {
   intervaloDoMes,
   validarCategoria,
   validarClassificacao,
+  validarData,
   validarDescricao,
   validarFormaDePagamento,
   validarId,
@@ -27,29 +28,6 @@ import { responderErro } from '../respostas.ts';
 import { datasDasParcelas } from '../parcelas.ts';
 
 export const rotasDeTransacoes = Router();
-
-// --- Validação --------------------------------------------------------------
-
-/** Aceita "2026-08-18" e devolve a data em UTC, sem hora. */
-function validarData(bruto: unknown): Date {
-  if (typeof bruto !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(bruto)) {
-    throw new ErroDeValidacao('Data inválida. Use o formato AAAA-MM-DD.');
-  }
-
-  // O "T00:00:00.000Z" força UTC. Sem ele, o Node interpretaria no fuso local
-  // e a data poderia recuar um dia.
-  const data = new Date(`${bruto}T00:00:00.000Z`);
-
-  if (Number.isNaN(data.getTime())) {
-    throw new ErroDeValidacao('Data inexistente no calendário.');
-  }
-  // Pega casos como 2026-02-31, que o construtor "conserta" para 03-03.
-  if (data.toISOString().slice(0, 10) !== bruto) {
-    throw new ErroDeValidacao('Data inexistente no calendário.');
-  }
-
-  return data;
-}
 
 /** Lançamento inexistente, ou de outro usuário: vira 404. */
 class TransacaoNaoEncontrada extends Error {}

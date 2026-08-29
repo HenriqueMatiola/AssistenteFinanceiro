@@ -1,7 +1,81 @@
+/**
+ * Tokens do sistema visual — "Cofre".
+ *
+ * Todas as cores vivem aqui, como variáveis. Nenhum outro arquivo escreve um
+ * hex: assim, mudar o tom de âmbar é mexer numa linha, e não caçar 30.
+ */
+
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* --- Petróleo: a espinha do app ---
+     Estas NÃO mudam entre tema claro e escuro. A barra lateral é sempre
+     escura, nos dois temas: é a âncora de identidade, e um app cuja marca
+     muda de humor conforme a configuração do sistema não tem marca. */
+  --petroleo-900: #071c1e;
+  --petroleo-800: #0c2b2e;
+  --petroleo-700: #103c3d;
+  --petroleo-600: #17565a;
+  --petroleo-300: #93c3c3;
+
+  /* Realce do mês aberto na trilha. No tema claro ele escurece; no escuro
+     precisa clarear, senão o petróleo some contra a superfície. */
+  --mes-ativo: var(--petroleo-800);
+
+  /* --- Âmbar: a cor da ação ---
+     Reservado para o que ainda não foi pago. Usado em mais lugares, viraria
+     enfeite e pararia de significar "isto exige algo de você". */
+  --ambar: #a05a0b;
+  --ambar-forte: #c97a16;
+  --ambar-fundo: #fbf0dc;
+
+  /* --- Superfícies (tema claro) --- */
+  --fundo: #eff3f2;
+  --superficie: #ffffff;
+  --superficie-2: #f7faf9;
+  --borda: #dbe4e2;
+  --borda-forte: #c3d1ce;
+  --texto: #16242a;
+  --texto-suave: #5d6e72;
+
+  /* --- Dinheiro --- */
+  --entrada: #0f7a5a;
+  --saida: #c0453c;
+
+  /* --- Medidas --- */
+  --raio: 10px;
+  --raio-pequeno: 6px;
+  --largura-lateral: 232px;
+
+  /* --- Tipografia ---
+     Três papéis: display para títulos e números grandes, corpo para a
+     interface, dados para valores em tabela (o mono alinha as colunas). */
+  --fonte-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --fonte-corpo: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --fonte-dados: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
+
+  font-family: var(--fonte-corpo);
   line-height: 1.5;
   color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #0b1315;
+    --superficie: #121f21;
+    --superficie-2: #16272a;
+    --borda: #23383b;
+    --borda-forte: #2f4a4e;
+    --texto: #e4edec;
+    --texto-suave: #91a5a7;
+
+    /* Os mesmos tons, clareados o suficiente para manter contraste sobre o
+       fundo escuro — os da versão clara sumiriam. */
+    --entrada: #4fd1a5;
+    --saida: #f08a80;
+    --ambar: #e8a33d;
+    --ambar-forte: #e8a33d;
+    --ambar-fundo: #33260f;
+    --mes-ativo: var(--petroleo-600);
+  }
 }
 
 * {
@@ -10,13 +84,25 @@
 
 body {
   margin: 0;
-  background: #f6f7f9;
-  color: #1c1f23;
+  background: var(--fundo);
+  color: var(--texto);
+  -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #16181c;
-    color: #e8eaed;
+/* Foco visível e consistente: quem navega por teclado precisa saber onde
+   está, e o outline padrão do navegador some contra o petróleo. */
+:focus-visible {
+  outline: 2px solid var(--ambar-forte);
+  outline-offset: 2px;
+  border-radius: var(--raio-pequeno);
+}
+
+/* Quem pediu menos movimento não recebe nenhuma transição. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }

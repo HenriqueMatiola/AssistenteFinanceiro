@@ -96,7 +96,7 @@ function Projecao() {
           <section className="cartao">
             <h2>Mês a mês</h2>
 
-            <table className="tabela">
+            <div className="tabela-rolavel"><table className="tabela">
               <thead>
                 <tr>
                   <th>Mês</th>
@@ -144,7 +144,7 @@ function Projecao() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           </section>
 
           <section className="cartao">
@@ -156,7 +156,7 @@ function Projecao() {
                 lançamentos que você já fez com data futura.
               </p>
             ) : (
-              <table className="tabela">
+              <div className="tabela-rolavel"><table className="tabela">
                 <thead>
                   <tr>
                     <th>Data prevista</th>
@@ -183,7 +183,7 @@ function Projecao() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </section>
         </>

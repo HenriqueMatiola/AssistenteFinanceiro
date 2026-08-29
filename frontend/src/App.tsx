@@ -31,7 +31,7 @@ function App() {
 
   if (verificando) {
     return (
-      <main className="pagina">
+      <main className="carregando-app">
         <p>Carregando…</p>
       </main>
     );

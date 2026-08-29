@@ -18,13 +18,24 @@ import {
   validarCategoria,
   validarClassificacao,
   validarDescricao,
+  validarData,
   validarDiaDoMes,
   validarFormaDePagamento,
   validarId,
+  mesAtualUTC,
+  validarMes,
+  validarStatus,
   validarTipo,
   validarValor,
+  intervaloDoMes,
 } from '../validacao.ts';
-import type { ClassificacaoGasto, TipoTransacao } from '../generated/prisma/enums.ts';
+import {
+  StatusTransacao,
+  type ClassificacaoGasto,
+  type TipoTransacao,
+} from '../generated/prisma/enums.ts';
+import { dataPrevista } from '../projecao.ts';
+import { previsaoDoMes } from '../previsaoDoMes.ts';
 
 export const rotasDeRecorrencias = Router();
 
@@ -80,6 +91,32 @@ async function exigirRecorrenciaDoUsuario(id: number, usuarioId: number): Promis
 class RecorrenciaNaoEncontrada extends Error {}
 
 // --- Rotas ------------------------------------------------------------------
+
+/**
+ * GET /api/recorrencias/previstas?mes=2026-08
+ *
+ * As recorrências que ainda não viraram lançamento no mês — o que a tela de
+ * Lançamentos mostra junto dos lançamentos de verdade, para dar para marcar
+ * cada conta como paga.
+ *
+ * Declarada ANTES de qualquer rota `/:id` de propósito: o Express casa na
+ * ordem, e "previstas" seria engolido como se fosse um id.
+ */
+rotasDeRecorrencias.get('/previstas', async (req, res) => {
+  try {
+    const mes = validarMes(req.query['mes'] ?? mesAtualUTC());
+
+    const previstas = await previsaoDoMes(
+      idDoUsuarioLogado(req),
+      mes,
+      intervaloDoMes(mes)
+    );
+
+    res.json({ mes, previstas });
+  } catch (erro) {
+    responderErro(res, erro, 'listar as contas previstas');
+  }
+});
 
 /**
  * GET /api/recorrencias
@@ -176,5 +213,91 @@ rotasDeRecorrencias.delete('/:id', async (req, res) => {
       return;
     }
     responderErro(res, erro, 'excluir a recorrência');
+  }
+});
+
+/**
+ * POST /api/recorrencias/:id/lancar   { "mes": "2026-08", "valor": 128.40 }
+ *
+ * Transforma a previsão daquele mês num lançamento de verdade, guardando de
+ * qual recorrência ele nasceu. É esse vínculo que faz a previsão parar de
+ * contar no balanço — sem ele, a conta apareceria duas vezes.
+ *
+ * `valor` e `data` são opcionais: contas de consumo (luz, água) variam todo
+ * mês, e obrigar o valor cadastrado tornaria o lançamento uma mentira.
+ */
+rotasDeRecorrencias.post('/:id/lancar', async (req, res) => {
+  try {
+    const id = validarId(req.params.id);
+    const usuarioId = idDoUsuarioLogado(req);
+    const corpo = req.body as Record<string, unknown>;
+    const mes = validarMes(corpo['mes']);
+
+    const recorrencia = await prisma.recorrencia.findFirst({ where: { id, usuarioId } });
+
+    if (!recorrencia) {
+      throw new RecorrenciaNaoEncontrada();
+    }
+
+    // Lançar duas vezes o mesmo mês criaria a cobrança em dobro que o vínculo
+    // existe justamente para evitar.
+    const jaExiste = await prisma.transacao.findFirst({
+      where: { usuarioId, recorrenciaId: id, data: intervaloDoMes(mes) },
+      select: { id: true },
+    });
+
+    if (jaExiste) {
+      res.status(409).json({
+        erro: `"${recorrencia.descricao}" já foi lançada neste mês.`,
+      });
+      return;
+    }
+
+    const transacao = await prisma.transacao.create({
+      data: {
+        usuarioId,
+        recorrenciaId: id,
+        // Sem data informada, cai no dia da recorrência — encolhido quando o
+        // mês não tem aquele dia (31 em fevereiro).
+        data: validarData(corpo['data'] ?? dataPrevista(mes, recorrencia.diaDoMes)),
+        descricao: recorrencia.descricao,
+        valor:
+          corpo['valor'] === undefined
+            ? recorrencia.valor
+            : validarValor(corpo['valor']),
+        categoria: recorrencia.categoria,
+        tipo: recorrencia.tipo,
+        formaDePagamento: recorrencia.formaDePagamento,
+        classificacao: recorrencia.classificacao,
+        // O gesto de lançar uma conta prevista é quase sempre "já paguei".
+        status:
+          corpo['status'] === undefined
+            ? StatusTransacao.CONCLUIDA
+            : validarStatus(corpo['status']),
+      },
+    });
+
+    res.status(201).json({
+      transacao: {
+        id: transacao.id,
+        data: transacao.data.toISOString().slice(0, 10),
+        descricao: transacao.descricao,
+        valor: transacao.valor.toNumber(),
+        categoria: transacao.categoria,
+        tipo: transacao.tipo,
+        status: transacao.status,
+        formaDePagamento: transacao.formaDePagamento,
+        classificacao: transacao.classificacao,
+        parcelaAtual: transacao.parcelaAtual,
+        parcelasTotais: transacao.parcelasTotais,
+        grupoDeParcelas: transacao.grupoDeParcelas,
+      },
+    });
+  } catch (erro) {
+    if (erro instanceof RecorrenciaNaoEncontrada) {
+      res.status(404).json({ erro: 'Recorrência não encontrada.' });
+      return;
+    }
+    responderErro(res, erro, 'lançar a recorrência');
   }
 });

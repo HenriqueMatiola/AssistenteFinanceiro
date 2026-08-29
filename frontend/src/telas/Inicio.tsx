@@ -21,10 +21,10 @@ function Inicio() {
   return (
     <>
       <div className="cartao">
-        <h2>Próximos passos</h2>
+        <h2>Onde o app está</h2>
         <p>
-          Login, lançamentos, dashboard, recorrências e projeção estão prontos.
-          Os Investimentos chegam na próxima etapa.
+          Dashboard, Lançamentos, Projeção e Recorrências estão prontos. Os
+          Investimentos ficaram para depois.
         </p>
       </div>
 

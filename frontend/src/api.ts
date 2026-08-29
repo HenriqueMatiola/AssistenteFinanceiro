@@ -198,21 +198,42 @@ export interface TotaisPorStatus {
   saidas: number;
 }
 
+/** Uma recorrência que ainda não virou lançamento no mês consultado. */
+export interface RecorrenciaPrevista {
+  id: number;
+  descricao: string;
+  categoria: string;
+  tipo: TipoTransacao;
+  formaDePagamento: string | null;
+  classificacao: ClassificacaoGasto | null;
+  diaDoMes: number;
+  valor: number;
+  /** Em que dia ela cai neste mês, "AAAA-MM-DD" — já encolhido em mês curto. */
+  data: string;
+}
+
 export interface ResumoDoMes {
   /** Formato "AAAA-MM". */
   mes: string;
   /** Resultado acumulado de tudo que veio antes deste mês. */
   sobraDoMesAnterior: number;
+  /** Lançamentos do mês MAIS as recorrências ainda não lançadas. */
   entradas: number;
   saidas: number;
   /** Entradas menos saídas do mês. Negativo quando se gastou mais do que entrou. */
   saldo: number;
   /** Sobra do mês anterior mais o saldo do mês: o que de fato resta. */
   disponivel: number;
+
   /** O que já se moveu de verdade. */
   realizado: TotaisPorStatus;
-  /** O que ainda está "a pagar" / "a receber". */
+  /** Lançado, mas ainda "a pagar" / "a receber". */
   pendente: TotaisPorStatus;
+  /** Recorrências que ainda nem viraram lançamento. Vazio em meses passados. */
+  previsto: TotaisPorStatus;
+
+  /** Quais recorrências compõem o `previsto`. */
+  recorrenciasPrevistas: RecorrenciaPrevista[];
 }
 
 export interface GastoPorCategoria {
@@ -282,6 +303,17 @@ export interface NovaRecorrencia {
   diaDoMes: number;
 }
 
+/**
+ * As recorrências que ainda não viraram lançamento no mês — o que a tela de
+ * Lançamentos mostra junto dos lançamentos de verdade.
+ */
+export async function listarPrevistas(mes: string): Promise<RecorrenciaPrevista[]> {
+  const resposta = await chamar<{ previstas: RecorrenciaPrevista[] }>(
+    `/api/recorrencias/previstas?mes=${encodeURIComponent(mes)}`
+  );
+  return resposta.previstas;
+}
+
 export async function listarRecorrencias(): Promise<Recorrencia[]> {
   const resposta = await chamar<{ recorrencias: Recorrencia[] }>('/api/recorrencias');
   return resposta.recorrencias;
@@ -306,6 +338,25 @@ export async function alternarRecorrencia(id: number, ativa: boolean): Promise<R
 
 export async function excluirRecorrencia(id: number): Promise<void> {
   await chamar(`/api/recorrencias/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Transforma a previsão de um mês num lançamento de verdade, guardando de qual
+ * recorrência ele nasceu. É esse vínculo que faz a previsão parar de contar no
+ * balanço, em vez de a conta aparecer duas vezes.
+ *
+ * `valor` é opcional: contas de consumo variam todo mês.
+ */
+export async function lancarRecorrencia(
+  id: number,
+  mes: string,
+  valor?: number
+): Promise<Transacao> {
+  const resposta = await chamar<{ transacao: Transacao }>(`/api/recorrencias/${id}/lancar`, {
+    method: 'POST',
+    body: JSON.stringify(valor === undefined ? { mes } : { mes, valor }),
+  });
+  return resposta.transacao;
 }
 
 // --- Projeção ---------------------------------------------------------------

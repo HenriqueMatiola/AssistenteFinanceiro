@@ -277,7 +277,7 @@ function Recorrencias() {
               desligadas ficam na lista, mas não somam nada.
             </p>
 
-            <table className="tabela">
+            <div className="tabela-rolavel"><table className="tabela">
               <thead>
                 <tr>
                   <th>Dia</th>
@@ -326,7 +326,7 @@ function Recorrencias() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </>
         )}
       </section>

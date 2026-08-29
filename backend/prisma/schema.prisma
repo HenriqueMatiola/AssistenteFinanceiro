@@ -63,15 +63,27 @@ model Transacao {
   /// uma vez em vez de caçar uma por uma.
   grupoDeParcelas String? @map("grupo_de_parcelas") @db.Uuid
 
+  /// De qual recorrência este lançamento nasceu, quando nasceu de uma.
+  /// É o que impede o balanço de contar a mesma conta duas vezes: enquanto
+  /// não existe o lançamento, vale a previsão; assim que ele existe, a
+  /// previsão daquele mês para de contar.
+  recorrenciaId Int? @map("recorrencia_id")
+
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   // Apagar um usuário apaga as transações dele junto.
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  // Apagar a recorrência não apaga os lançamentos que já aconteceram: eles
+  // são fatos, e continuam valendo sem a origem.
+  recorrencia Recorrencia? @relation(fields: [recorrenciaId], references: [id], onDelete: SetNull)
+
   // Toda consulta é "transações deste usuário, neste período".
   @@index([usuarioId, data])
   // Apagar ou listar uma compra parcelada inteira.
   @@index([grupoDeParcelas])
+  // "Esta recorrência já foi lançada neste mês?" — a pergunta do balanço.
+  @@index([recorrenciaId, data])
   @@map("transacoes")
 }
 
@@ -104,6 +116,9 @@ model Recorrencia {
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// Lançamentos que já nasceram desta recorrência.
+  lancamentos Transacao[]
 
   // A projeção sempre pede "as recorrências ativas deste usuário".
   @@index([usuarioId, ativa])

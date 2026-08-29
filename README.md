@@ -87,13 +87,15 @@ Depois abra <http://localhost:5173> no navegador.
 | `POST /api/transacoes` | **Protegida.** Cria um lançamento. Com `parcelas: 12`, cria as 12 de uma vez. Devolve sempre uma lista. O dono vem do token, nunca do corpo |
 | `PATCH /api/transacoes/:id` | **Protegida.** Marca como pago/recebido: `{status: "CONCLUIDA"}` |
 | `DELETE /api/transacoes/:id` | **Protegida.** Apaga o lançamento; com `?todasAsParcelas=true`, apaga a compra parcelada inteira |
-| `GET /api/resumo` | **Protegida.** Balanço do mês: sobra do mês anterior, entradas, saídas, saldo, disponível, e a quebra entre realizado e pendente. `?mes=2026-08` |
+| `GET /api/resumo` | **Protegida.** Balanço do mês: sobra anterior, entradas, saídas, saldo, disponível, e a composição em realizado / lançado-pendente / previsto pelas recorrências. `?mes=2026-08` |
 | `GET /api/resumo/categorias` | **Protegida.** Gastos do mês somados por categoria, do maior para o menor |
 | `GET /api/resumo/formas-de-pagamento` | **Protegida.** Gastos do mês por forma de pagamento — a fatura de cada cartão |
 | `GET /api/recorrencias` | **Protegida.** Lista as recorrências do usuário, ativas e desligadas |
 | `POST /api/recorrencias` | **Protegida.** Cria uma recorrência `{descricao, valor, categoria, tipo, diaDoMes}` |
 | `PATCH /api/recorrencias/:id` | **Protegida.** Liga ou desliga: `{ativa: true|false}` |
 | `DELETE /api/recorrencias/:id` | **Protegida.** Apaga a recorrência de vez |
+| `GET /api/recorrencias/previstas` | **Protegida.** As recorrências que ainda não viraram lançamento no mês, com a data prevista. `?mes=2026-08` |
+| `POST /api/recorrencias/:id/lancar` | **Protegida.** Transforma a previsão de um mês em lançamento de verdade, vinculado à recorrência. `{mes, valor?}`; 409 se já foi lançada |
 | `GET /api/projecao` | **Protegida.** Saldo projetado por mês. `?inicio=2026-09&meses=6` (padrão: 6 meses a partir do mês que vem) |
 
 ## Banco de dados
@@ -110,6 +112,19 @@ o aplica no banco.
 - **Datas de transação** usam o tipo `DATE` (sem hora) e trafegam como texto
   `"AAAA-MM-DD"`. Com hora e fuso, um lançamento pode pular de dia — e de mês.
 - **O dono de um registro sempre vem do token**, nunca do corpo da requisição.
+- **O balanço soma lançamentos MAIS as recorrências ainda não lançadas.**
+  Uma conta cadastrada como recorrência já pesa no mês antes de virar
+  lançamento — senão um mês recém-começado pareceria vazio tendo aluguel e
+  salário garantidos.
+- **O vínculo `recorrenciaId` é o que evita contar duas vezes.** Enquanto
+  não existe lançamento vinculado no mês, vale a previsão; assim que ele
+  existe, a previsão daquele mês para de contar. Por isso lançar uma conta
+  prevista não muda o total do mês.
+- **A tela de Lançamentos mostra previsões e lançamentos na mesma lista**,
+  ordenados por data. As previstas vêm marcadas e trazem o botão de marcar
+  como paga, que é o que as converte em lançamento.
+- **Mês passado não recebe previsão.** Previsão é sobre o que ainda vai
+  acontecer; estimar um mês encerrado esconderia o lançamento esquecido.
 - **Entradas e saídas do mês contam tudo que está lançado, pago ou não.** É
   o que responde "como o mês fecha se tudo acontecer como planejado". A
   quebra por situação vai junto, em `realizado` e `pendente`.
@@ -131,14 +146,16 @@ o aplica no banco.
 
 ## Estado atual
 
-Etapas 0 a 5 concluídas:
+Etapas 0 a 5 concluídas, mais o redesenho visual:
 
 - **0–1** — repositório, PostgreSQL no Docker, login com hash e JWT
 - **2** — tabela `transacoes` e tela de Lançamentos
 - **3** — Dashboard: totais do mês e gráfico de gastos por categoria
 - **4** — tabela `recorrencias`, motor de projeção (com testes) e tela de Projeção
-- **5** — lançamentos completos: descrição, situação (a pagar/pago), forma de
-  pagamento, fixo/variável, parcelamento automático e balanço com sobra do
-  mês anterior
+- **5** — lançamentos completos: descrição, situação, forma de pagamento,
+  fixo/variável, parcelamento automático e balanço com sobra do mês anterior
+- **visual** — identidade própria, barra lateral e trilha de meses
+- **balanço com previsão** — as recorrências entram no balanço do mês antes
+  de virarem lançamento, sem dupla contagem
 
-Próxima: Etapa 6 — Investimentos.
+Investimentos (Etapa 6) foi adiada. Falta o polimento final (Etapa 7).
