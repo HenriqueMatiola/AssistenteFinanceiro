@@ -132,19 +132,19 @@ function Dashboard({ mes }: Props) {
             <tbody>
               <tr>
                 <td>Já realizado</td>
-                <td className="alinhado-direita ganho">
+                <td data-rotulo="Entradas" className="alinhado-direita ganho">
                   {formatarDinheiro(resumo.realizado.entradas)}
                 </td>
-                <td className="alinhado-direita gasto">
+                <td data-rotulo="Saídas" className="alinhado-direita gasto">
                   {formatarDinheiro(resumo.realizado.saidas)}
                 </td>
               </tr>
               <tr>
                 <td>Lançado, a receber / a pagar</td>
-                <td className="alinhado-direita ganho">
+                <td data-rotulo="Entradas" className="alinhado-direita ganho">
                   {formatarDinheiro(resumo.pendente.entradas)}
                 </td>
-                <td className="alinhado-direita gasto">
+                <td data-rotulo="Saídas" className="alinhado-direita gasto">
                   {formatarDinheiro(resumo.pendente.saidas)}
                 </td>
               </tr>
@@ -155,10 +155,10 @@ function Dashboard({ mes }: Props) {
                     <span className="marcador"> {previstas.length} conta(s)</span>
                   )}
                 </td>
-                <td className="alinhado-direita ganho">
+                <td data-rotulo="Entradas" className="alinhado-direita ganho">
                   {formatarDinheiro(resumo.previsto.entradas)}
                 </td>
-                <td className="alinhado-direita gasto">
+                <td data-rotulo="Saídas" className="alinhado-direita gasto">
                   {formatarDinheiro(resumo.previsto.saidas)}
                 </td>
               </tr>
@@ -233,8 +233,8 @@ function Dashboard({ mes }: Props) {
                   {formas.map((f) => (
                     <tr key={f.forma}>
                       <td>{f.forma}</td>
-                      <td className="alinhado-direita gasto">{formatarDinheiro(f.total)}</td>
-                      <td className="alinhado-direita">
+                      <td data-rotulo="Total" className="alinhado-direita gasto">{formatarDinheiro(f.total)}</td>
+                      <td data-rotulo="Ainda a pagar" className="alinhado-direita">
                         {f.pendente > 0 ? (
                           <span className="situacao situacao--pendente">
                             {formatarDinheiro(f.pendente)}

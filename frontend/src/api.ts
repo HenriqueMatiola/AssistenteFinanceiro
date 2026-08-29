@@ -65,6 +65,17 @@ async function chamar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> 
 
   const corpo: unknown = await resposta.json().catch(() => null);
 
+  /*
+   * 401 significa que o token expirou (ele vale 7 dias) ou foi invalidado.
+   * Sem este tratamento, todas as telas passariam a mostrar "Erro 401" e a
+   * única saída seria clicar em Sair — um beco sem saída para quem não sabe
+   * o que é um token. Aqui a sessão é descartada e o app volta ao login.
+   */
+  if (resposta.status === 401 && lerToken()) {
+    apagarToken();
+    window.location.reload();
+  }
+
   if (!resposta.ok) {
     const mensagem =
       corpo && typeof corpo === 'object' && 'erro' in corpo && typeof corpo.erro === 'string'
@@ -408,37 +419,61 @@ export async function buscarProjecao(inicio?: string, meses?: number): Promise<P
   const consulta = parametros.toString();
   return chamar(`/api/projecao${consulta ? `?${consulta}` : ''}`);
 }
-
 // --- Investimentos ----------------------------------------------------------
 
-export interface Investimento {
+export type TipoDeOperacao = 'COMPRA' | 'VENDA';
+
+/** Em que cesta o ativo entra no resumo da carteira. */
+export type ClasseDeAtivo = 'ACAO' | 'FII' | 'CRIPTO' | 'ETF' | 'OUTRO';
+
+/** Uma compra ou venda registrada. */
+export interface Operacao {
   id: number;
-  /** Código na fonte de cotação: PETR4.SA, BTC-USD. */
   ativo: string;
-  apelido: string | null;
+  classe: ClasseDeAtivo;
+  tipo: TipoDeOperacao;
   /** "AAAA-MM-DD". */
-  dataDaCompra: string;
+  data: string;
   quantidade: number;
-  /** O total desembolsado na compra, em reais. */
-  valorPago: number;
+  /** O que saiu do bolso (compra) ou entrou nele (venda). */
+  valor: number;
+}
+
+/** A posição atual num ativo, somando todas as operações dele. */
+export interface AtivoNaCarteira {
+  ativo: string;
+  classe: ClasseDeAtivo;
+  /** O que ainda está em carteira. Zero quando tudo foi vendido. */
+  quantidade: number;
+  /** Quanto já saiu, somando as vendas. */
+  quantidadeVendida: number;
+  /** Custo do que ainda está em carteira. */
+  investido: number;
+  /** Custo por unidade do que resta. */
+  precoMedio: number;
+  /** Resultado das vendas já feitas — dinheiro que já entrou. */
+  lucroRealizado: number;
 
   /** Preço de uma unidade, já convertido para reais. Null se a fonte falhou. */
   cotacao: number | null;
-  /** Moeda em que o ativo é cotado na origem. */
   moedaOriginal: string | null;
-  /** O preço antes da conversão. */
   precoOriginal: number | null;
   /** Taxa usada na conversão; null quando o ativo já cotava em reais. */
   cambio: number | null;
 
-  /** Valor pago dividido pela quantidade. */
-  precoMedio: number;
-  /** Quanto a posição vale agora. Null sem cotação. */
   valorAtual: number | null;
-  /** Valor atual menos valor pago. Negativo é prejuízo. */
+  /** Lucro "no papel": o que se ganharia vendendo tudo agora. */
   lucro: number | null;
-  /** O lucro como fração do que foi pago (0.15 = +15%). */
   variacao: number | null;
+}
+
+export interface ResumoDeClasse {
+  classe: ClasseDeAtivo;
+  investido: number;
+  valorAtual: number;
+  lucro: number;
+  variacao: number | null;
+  ativos: number;
 }
 
 export interface TotalDaCarteira {
@@ -448,21 +483,31 @@ export interface TotalDaCarteira {
   variacao: number | null;
   /** Quantas posições ficaram sem cotação — elas não entram no total. */
   semCotacao: number;
+  /** Somado de todas as vendas, inclusive de ativos que já saíram. */
+  lucroRealizado: number;
 }
 
 export interface Carteira {
-  investimentos: Investimento[];
+  ativos: AtivoNaCarteira[];
+  porClasse: ResumoDeClasse[];
   total: TotalDaCarteira;
   /** True quando algum ativo não teve preço — os números estão incompletos. */
   cotacaoIndisponivel: boolean;
 }
 
-export interface NovoInvestimento {
+export interface NovaOperacao {
   ativo: string;
-  apelido?: string;
-  dataDaCompra: string;
+  classe?: ClasseDeAtivo | '';
+  tipo: TipoDeOperacao;
+  data: string;
   quantidade: number;
-  valorPago: number;
+  valor: number;
+}
+
+export interface FiltroDeOperacoes {
+  /** Formato "AAAA-MM". */
+  mes?: string;
+  tipo?: TipoDeOperacao | '';
 }
 
 /** A carteira com cotação buscada ao vivo. Nada de preço fica guardado. */
@@ -470,13 +515,26 @@ export async function buscarCarteira(): Promise<Carteira> {
   return chamar('/api/investimentos');
 }
 
-export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
+/** O histórico de compras e vendas. */
+export async function listarOperacoes(filtro: FiltroDeOperacoes = {}): Promise<Operacao[]> {
+  const parametros = new URLSearchParams();
+  if (filtro.mes) parametros.set('mes', filtro.mes);
+  if (filtro.tipo) parametros.set('tipo', filtro.tipo);
+
+  const consulta = parametros.toString();
+  const resposta = await chamar<{ operacoes: Operacao[] }>(
+    `/api/investimentos/operacoes${consulta ? `?${consulta}` : ''}`
+  );
+  return resposta.operacoes;
+}
+
+export async function registrarOperacao(nova: NovaOperacao): Promise<void> {
   await chamar('/api/investimentos', {
     method: 'POST',
-    body: JSON.stringify(novo),
+    body: JSON.stringify(nova),
   });
 }
 
-export async function excluirInvestimento(id: number): Promise<void> {
+export async function excluirOperacao(id: number): Promise<void> {
   await chamar(`/api/investimentos/${id}`, { method: 'DELETE' });
 }

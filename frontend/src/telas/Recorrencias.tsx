@@ -291,7 +291,7 @@ function Recorrencias() {
               <tbody>
                 {recorrencias.map((r) => (
                   <tr key={r.id} className={r.ativa ? undefined : 'linha--desligada'}>
-                    <td>{r.diaDoMes}</td>
+                    <td data-rotulo="Dia">{r.diaDoMes}</td>
                     <td>
                       {r.descricao}
                       {r.classificacao && (
@@ -300,9 +300,9 @@ function Recorrencias() {
                         </span>
                       )}
                     </td>
-                    <td>{r.categoria}</td>
-                    <td>{r.formaDePagamento ?? '—'}</td>
-                    <td className={`alinhado-direita ${r.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}>
+                    <td data-rotulo="Categoria">{r.categoria}</td>
+                    <td data-rotulo="Pagamento">{r.formaDePagamento ?? '—'}</td>
+                    <td data-rotulo="Valor" className={`alinhado-direita ${r.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}>
                       {r.tipo === 'GANHO' ? '+' : '−'} {formatarDinheiro(r.valor)}
                     </td>
                     <td className="alinhado-direita">

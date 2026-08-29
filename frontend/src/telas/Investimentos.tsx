@@ -1,17 +1,22 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   buscarCarteira,
-  criarInvestimento,
-  excluirInvestimento,
+  excluirOperacao,
+  listarOperacoes,
+  registrarOperacao,
   type Carteira,
-  type Investimento,
+  type ClasseDeAtivo,
+  type Operacao,
+  type TipoDeOperacao,
 } from '../api.ts';
 import {
   formatarData,
   formatarDinheiro,
+  formatarMes,
   formatarPercentual,
   formatarQuantidade,
   hojeISO,
+  mesAtualISO,
 } from '../formato.ts';
 
 /**
@@ -26,17 +31,31 @@ const EXEMPLOS_DE_ATIVO = [
   { codigo: 'AAPL', descricao: 'ações de fora' },
 ];
 
+const NOME_DA_CLASSE: Record<ClasseDeAtivo, string> = {
+  ACAO: 'Ações',
+  FII: 'Fundos imobiliários',
+  CRIPTO: 'Cripto',
+  ETF: 'ETFs',
+  OUTRO: 'Outros',
+};
+
 function Investimentos() {
   const [carteira, setCarteira] = useState<Carteira | null>(null);
+  const [operacoes, setOperacoes] = useState<Operacao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
+  // Filtros do histórico
+  const [mesFiltrado, setMesFiltrado] = useState('');
+  const [tipoFiltrado, setTipoFiltrado] = useState<TipoDeOperacao | ''>('');
+
   // Formulário
+  const [tipo, setTipo] = useState<TipoDeOperacao>('COMPRA');
   const [ativo, setAtivo] = useState('');
-  const [apelido, setApelido] = useState('');
-  const [dataDaCompra, setDataDaCompra] = useState(hojeISO());
+  const [classe, setClasse] = useState<ClasseDeAtivo | ''>('');
+  const [data, setData] = useState(hojeISO());
   const [quantidade, setQuantidade] = useState('');
-  const [valorPago, setValorPago] = useState('');
+  const [valor, setValor] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erroDoFormulario, setErroDoFormulario] = useState<string | null>(null);
 
@@ -45,10 +64,11 @@ function Investimentos() {
   useEffect(() => {
     let cancelado = false;
 
-    buscarCarteira()
-      .then((dados) => {
+    Promise.all([buscarCarteira(), listarOperacoes({ mes: mesFiltrado, tipo: tipoFiltrado })])
+      .then(([dados, historico]) => {
         if (cancelado) return;
         setCarteira(dados);
+        setOperacoes(historico);
         setErro(null);
       })
       .catch((e: unknown) => {
@@ -62,7 +82,7 @@ function Investimentos() {
     return () => {
       cancelado = true;
     };
-  }, [versao]);
+  }, [versao, mesFiltrado, tipoFiltrado]);
 
   function recarregar() {
     setCarregando(true);
@@ -77,27 +97,31 @@ function Investimentos() {
     try {
       // Os campos são texto para aceitar vírgula, como se escreve em português.
       const quantidadeNumerica = Number(quantidade.replace(',', '.'));
-      const valorNumerico = Number(valorPago.replace(',', '.'));
+      const valorNumerico = Number(valor.replace(',', '.'));
 
       if (!Number.isFinite(quantidadeNumerica) || quantidadeNumerica <= 0) {
         throw new Error('Informe uma quantidade maior que zero.');
       }
       if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
-        throw new Error('Informe quanto você pagou, em reais.');
+        throw new Error(
+          tipo === 'COMPRA'
+            ? 'Informe quanto você pagou, em reais.'
+            : 'Informe quanto você recebeu, em reais.'
+        );
       }
 
-      await criarInvestimento({
+      await registrarOperacao({
         ativo,
-        apelido: apelido || undefined,
-        dataDaCompra,
+        classe: classe || undefined,
+        tipo,
+        data,
         quantidade: quantidadeNumerica,
-        valorPago: valorNumerico,
+        valor: valorNumerico,
       });
 
       setAtivo('');
-      setApelido('');
       setQuantidade('');
-      setValorPago('');
+      setValor('');
       recarregar();
     } catch (e) {
       setErroDoFormulario(e instanceof Error ? e.message : 'Não consegui salvar.');
@@ -106,13 +130,20 @@ function Investimentos() {
     }
   }
 
-  async function aoExcluir(investimento: Investimento) {
-    const nome = investimento.apelido ?? investimento.ativo;
-    if (!window.confirm(`Apagar a posição em "${nome}"?`)) return;
+  async function aoExcluir(operacao: Operacao) {
+    const acao = operacao.tipo === 'COMPRA' ? 'compra' : 'venda';
+    if (
+      !window.confirm(
+        `Apagar a ${acao} de ${formatarQuantidade(operacao.quantidade)} ${operacao.ativo}?\n\n` +
+          'O preço médio e o resultado são recalculados a partir das operações que sobrarem.'
+      )
+    ) {
+      return;
+    }
 
     setErro(null);
     try {
-      await excluirInvestimento(investimento.id);
+      await excluirOperacao(operacao.id);
       recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não consegui excluir.');
@@ -120,20 +151,32 @@ function Investimentos() {
   }
 
   const total = carteira?.total;
-  const investimentos = carteira?.investimentos ?? [];
+  const ativosEmCarteira = (carteira?.ativos ?? []).filter((a) => a.quantidade > 0);
+  const ativosEncerrados = (carteira?.ativos ?? []).filter(
+    (a) => a.quantidade === 0 && a.quantidadeVendida > 0
+  );
+  const porClasse = carteira?.porClasse ?? [];
 
   return (
     <>
       <section className="cartao">
-        <h2>Nova compra</h2>
+        <h2>Registrar operação</h2>
         <p className="explicacao">
-          Informe o <strong>código do ativo</strong> e quanto você pagou no total.
-          A cotação é buscada ao vivo a cada vez que esta tela abre — nenhum preço
-          fica guardado, porque preço guardado envelhece e passa a mentir.
+          Cada compra e cada venda é um registro. O preço médio, a posição e o
+          resultado saem da soma delas — e a cotação é buscada ao vivo, porque
+          preço guardado envelhece e passa a mentir.
         </p>
 
         <form onSubmit={aoEnviar}>
           <div className="linha-de-campos">
+            <label className="campo">
+              <span>Operação</span>
+              <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoDeOperacao)}>
+                <option value="COMPRA">Compra</option>
+                <option value="VENDA">Venda</option>
+              </select>
+            </label>
+
             <label className="campo">
               <span>Código do ativo</span>
               <input
@@ -154,21 +197,26 @@ function Investimentos() {
             </label>
 
             <label className="campo">
-              <span>Apelido (opcional)</span>
-              <input
-                type="text"
-                placeholder="Ex: Petrobras"
-                value={apelido}
-                onChange={(e) => setApelido(e.target.value)}
-              />
+              <span>Tipo de ativo</span>
+              <select
+                value={classe}
+                onChange={(e) => setClasse(e.target.value as ClasseDeAtivo | '')}
+              >
+                <option value="">Descobrir pelo código</option>
+                {(Object.keys(NOME_DA_CLASSE) as ClasseDeAtivo[]).map((c) => (
+                  <option key={c} value={c}>
+                    {NOME_DA_CLASSE[c]}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="campo">
-              <span>Data da compra</span>
+              <span>Data</span>
               <input
                 type="date"
-                value={dataDaCompra}
-                onChange={(e) => setDataDaCompra(e.target.value)}
+                value={data}
+                onChange={(e) => setData(e.target.value)}
                 required
               />
             </label>
@@ -188,13 +236,15 @@ function Investimentos() {
             </label>
 
             <label className="campo">
-              <span>Valor pago no total (R$)</span>
+              <span>
+                {tipo === 'COMPRA' ? 'Valor pago no total (R$)' : 'Valor recebido (R$)'}
+              </span>
               <input
                 type="text"
                 inputMode="decimal"
                 placeholder="0,00"
-                value={valorPago}
-                onChange={(e) => setValorPago(e.target.value)}
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
                 required
               />
             </label>
@@ -203,7 +253,7 @@ function Investimentos() {
           {erroDoFormulario && <p className="mensagem-erro">{erroDoFormulario}</p>}
 
           <button type="submit" disabled={salvando}>
-            {salvando ? 'Salvando…' : 'Registrar compra'}
+            {salvando ? 'Salvando…' : tipo === 'COMPRA' ? 'Registrar compra' : 'Registrar venda'}
           </button>
         </form>
       </section>
@@ -222,7 +272,7 @@ function Investimentos() {
             <p className="explicacao">
               {total.variacao === null
                 ? 'Registre uma compra para acompanhar o resultado.'
-                : `${formatarPercentual(total.variacao)} sobre o que você investiu.`}
+                : `${formatarPercentual(total.variacao)} sobre o que está investido hoje — o lucro no papel, de quem ainda segura os ativos.`}
             </p>
 
             <div className="kpis">
@@ -235,9 +285,17 @@ function Investimentos() {
                 <span className="kpi__valor">{formatarDinheiro(total.valorAtual)}</span>
               </div>
               <div className="kpi">
-                <span className="kpi__rotulo">Resultado</span>
+                <span className="kpi__rotulo">No papel</span>
                 <span className={`kpi__valor ${total.lucro < 0 ? 'gasto' : 'ganho'}`}>
                   {formatarDinheiro(total.lucro)}
+                </span>
+              </div>
+              <div className="kpi">
+                <span className="kpi__rotulo">Já realizado</span>
+                <span
+                  className={`kpi__valor ${total.lucroRealizado < 0 ? 'gasto' : 'ganho'}`}
+                >
+                  {formatarDinheiro(total.lucroRealizado)}
                 </span>
               </div>
             </div>
@@ -247,19 +305,64 @@ function Investimentos() {
                 {total.semCotacao === 1
                   ? '1 ativo ficou sem cotação e está fora destes totais.'
                   : `${total.semCotacao} ativos ficaram sem cotação e estão fora destes totais.`}{' '}
-                Confira se o código está certo — ações da B3 precisam do sufixo{' '}
-                <strong>.SA</strong>.
+                Confira o código — ações da B3 precisam do sufixo <strong>.SA</strong>.
               </p>
             )}
           </section>
 
           <section className="cartao">
-            <h2>Seus ativos</h2>
+            <h2>Por tipo de ativo</h2>
 
-            {investimentos.length === 0 ? (
+            {porClasse.length === 0 ? (
+              <p className="vazio">Nada em carteira ainda.</p>
+            ) : (
+              <div className="tabela-rolavel">
+                <table className="tabela">
+                  <thead>
+                    <tr>
+                      <th>Tipo</th>
+                      <th className="alinhado-direita">Ativos</th>
+                      <th className="alinhado-direita">Investido</th>
+                      <th className="alinhado-direita">Vale hoje</th>
+                      <th className="alinhado-direita">Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porClasse.map((c) => (
+                      <tr key={c.classe}>
+                        <td>{NOME_DA_CLASSE[c.classe]}</td>
+                        <td data-rotulo="Ativos" className="alinhado-direita">
+                          <span className="numero">{c.ativos}</span>
+                        </td>
+                        <td data-rotulo="Investido" className="alinhado-direita">
+                          <span className="numero">{formatarDinheiro(c.investido)}</span>
+                        </td>
+                        <td data-rotulo="Vale hoje" className="alinhado-direita">
+                          <span className="numero">{formatarDinheiro(c.valorAtual)}</span>
+                        </td>
+                        <td
+                          data-rotulo="Resultado"
+                          className={`alinhado-direita ${c.lucro < 0 ? 'gasto' : 'ganho'}`}
+                        >
+                          {formatarDinheiro(c.lucro)}
+                          {c.variacao !== null && (
+                            <span className="barra__fatia"> · {formatarPercentual(c.variacao)}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="cartao">
+            <h2>Posição por ativo</h2>
+
+            {ativosEmCarteira.length === 0 ? (
               <p className="vazio">
-                Nenhum ativo registrado. Comece pela compra mais recente que você
-                lembrar.
+                Nenhum ativo em carteira. Registre uma compra para começar.
               </p>
             ) : (
               <div className="tabela-rolavel">
@@ -267,76 +370,212 @@ function Investimentos() {
                   <thead>
                     <tr>
                       <th>Ativo</th>
-                      <th>Compra</th>
-                      <th className="alinhado-direita">Qtd.</th>
+                      <th className="alinhado-direita">Quantidade</th>
                       <th className="alinhado-direita">Preço médio</th>
                       <th className="alinhado-direita">Cotação</th>
+                      <th className="alinhado-direita">Investido</th>
                       <th className="alinhado-direita">Vale hoje</th>
                       <th className="alinhado-direita">Resultado</th>
-                      <th className="alinhado-direita">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {investimentos.map((i) => (
-                      <tr key={i.id}>
+                    {ativosEmCarteira.map((a) => (
+                      <tr key={a.ativo}>
                         <td>
-                          {i.apelido ?? i.ativo}
-                          {i.apelido && <span className="marcador"> {i.ativo}</span>}
-                          {i.cambio !== null && (
+                          {a.ativo}
+                          {a.cambio !== null && (
                             <span
                               className="etiqueta"
-                              title={`Cotado em ${i.moedaOriginal}, convertido a R$ ${i.cambio.toFixed(4)}`}
+                              title={`Cotado em ${a.moedaOriginal}, convertido a R$ ${a.cambio.toFixed(4)}`}
                             >
-                              {i.moedaOriginal}
+                              {a.moedaOriginal}
                             </span>
                           )}
                         </td>
-                        <td>{formatarData(i.dataDaCompra)}</td>
-                        <td className="alinhado-direita">
-                          <span className="numero">{formatarQuantidade(i.quantidade)}</span>
+                        <td data-rotulo="Quantidade" className="alinhado-direita">
+                          <span className="numero">{formatarQuantidade(a.quantidade)}</span>
                         </td>
-                        <td className="alinhado-direita">
-                          <span className="numero">{formatarDinheiro(i.precoMedio)}</span>
+                        <td data-rotulo="Preço médio" className="alinhado-direita">
+                          <span className="numero">{formatarDinheiro(a.precoMedio)}</span>
                         </td>
-                        <td className="alinhado-direita">
-                          {i.cotacao === null ? (
+                        <td data-rotulo="Cotação" className="alinhado-direita">
+                          {a.cotacao === null ? (
                             <span className="vazio">sem preço</span>
                           ) : (
-                            <span className="numero">{formatarDinheiro(i.cotacao)}</span>
+                            <span className="numero">{formatarDinheiro(a.cotacao)}</span>
                           )}
                         </td>
-                        <td className="alinhado-direita">
-                          {i.valorAtual === null ? (
+                        <td data-rotulo="Investido" className="alinhado-direita">
+                          <span className="numero">{formatarDinheiro(a.investido)}</span>
+                        </td>
+                        <td data-rotulo="Vale hoje" className="alinhado-direita">
+                          {a.valorAtual === null ? (
                             <span className="vazio">—</span>
                           ) : (
-                            <span className="numero">{formatarDinheiro(i.valorAtual)}</span>
+                            <span className="numero">{formatarDinheiro(a.valorAtual)}</span>
                           )}
                         </td>
                         <td
+                          data-rotulo="Resultado"
                           className={`alinhado-direita ${
-                            i.lucro === null ? '' : i.lucro < 0 ? 'gasto' : 'ganho'
+                            a.lucro === null ? '' : a.lucro < 0 ? 'gasto' : 'ganho'
                           }`}
                         >
-                          {i.lucro === null ? (
+                          {a.lucro === null ? (
                             <span className="vazio">—</span>
                           ) : (
                             <>
-                              {formatarDinheiro(i.lucro)}
-                              {i.variacao !== null && (
+                              {formatarDinheiro(a.lucro)}
+                              {a.variacao !== null && (
                                 <span className="barra__fatia">
                                   {' '}
-                                  · {formatarPercentual(i.variacao)}
+                                  · {formatarPercentual(a.variacao)}
                                 </span>
                               )}
                             </>
                           )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {ativosEncerrados.length > 0 && (
+              <>
+                <p className="explicacao" style={{ marginTop: '1.25rem' }}>
+                  Posições encerradas — você vendeu tudo, mas o resultado continua
+                  contando no "já realizado".
+                </p>
+                <div className="tabela-rolavel">
+                  <table className="tabela">
+                    <thead>
+                      <tr>
+                        <th>Ativo</th>
+                        <th className="alinhado-direita">Quantidade vendida</th>
+                        <th className="alinhado-direita">Resultado realizado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ativosEncerrados.map((a) => (
+                        <tr key={a.ativo}>
+                          <td>{a.ativo}</td>
+                          <td data-rotulo="Quantidade vendida" className="alinhado-direita">
+                            <span className="numero">
+                              {formatarQuantidade(a.quantidadeVendida)}
+                            </span>
+                          </td>
+                          <td
+                            data-rotulo="Resultado realizado"
+                            className={`alinhado-direita ${
+                              a.lucroRealizado < 0 ? 'gasto' : 'ganho'
+                            }`}
+                          >
+                            {formatarDinheiro(a.lucroRealizado)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="cartao">
+            <h2>Histórico de operações</h2>
+
+            <div className="linha-de-campos linha-de-campos--filtros">
+              <label className="campo">
+                <span>Mês</span>
+                <input
+                  type="month"
+                  value={mesFiltrado}
+                  max={mesAtualISO()}
+                  onChange={(e) => setMesFiltrado(e.target.value)}
+                />
+              </label>
+
+              <label className="campo">
+                <span>Operação</span>
+                <select
+                  value={tipoFiltrado}
+                  onChange={(e) => setTipoFiltrado(e.target.value as TipoDeOperacao | '')}
+                >
+                  <option value="">Compras e vendas</option>
+                  <option value="COMPRA">Só compras</option>
+                  <option value="VENDA">Só vendas</option>
+                </select>
+              </label>
+
+              {(mesFiltrado || tipoFiltrado) && (
+                <div className="campo campo--acao">
+                  <button
+                    type="button"
+                    className="botao--discreto"
+                    onClick={() => {
+                      setMesFiltrado('');
+                      setTipoFiltrado('');
+                    }}
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {operacoes.length === 0 ? (
+              <p className="vazio">
+                {mesFiltrado
+                  ? `Nenhuma operação em ${formatarMes(mesFiltrado)}.`
+                  : 'Nenhuma operação registrada.'}
+              </p>
+            ) : (
+              <div className="tabela-rolavel">
+                <table className="tabela">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Operação</th>
+                      <th>Ativo</th>
+                      <th className="alinhado-direita">Quantidade</th>
+                      <th className="alinhado-direita">Valor</th>
+                      <th className="alinhado-direita">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operacoes.map((o) => (
+                      <tr key={o.id}>
+                        <td data-rotulo="Data">{formatarData(o.data)}</td>
+                        <td data-rotulo="Operação">
+                          <span
+                            className={
+                              o.tipo === 'VENDA' ? 'situacao situacao--pendente' : 'situacao'
+                            }
+                          >
+                            {o.tipo === 'COMPRA' ? 'Compra' : 'Venda'}
+                          </span>
+                        </td>
+                        {/* Sem rótulo de propósito: no celular esta célula vira
+                            o título do cartão, e o ativo é o que identifica a
+                            operação. */}
+                        <td>{o.ativo}</td>
+                        <td data-rotulo="Quantidade" className="alinhado-direita">
+                          <span className="numero">{formatarQuantidade(o.quantidade)}</span>
+                        </td>
+                        <td
+                          data-rotulo="Valor"
+                          className={`alinhado-direita ${o.tipo === 'VENDA' ? 'ganho' : 'gasto'}`}
+                        >
+                          {o.tipo === 'VENDA' ? '+' : '−'} {formatarDinheiro(o.valor)}
                         </td>
                         <td className="alinhado-direita">
                           <div className="acoes">
                             <button
                               type="button"
                               className="botao--discreto"
-                              onClick={() => aoExcluir(i)}
+                              onClick={() => aoExcluir(o)}
                             >
                               Excluir
                             </button>

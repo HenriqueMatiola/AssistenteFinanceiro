@@ -124,16 +124,18 @@ function Projecao() {
                           </span>
                         )}
                       </td>
-                      <td className="alinhado-direita ganho">
+                      <td data-rotulo="Entradas" className="alinhado-direita ganho">
                         {formatarDinheiro(mes.entradas)}
                       </td>
-                      <td className="alinhado-direita gasto">{formatarDinheiro(mes.saidas)}</td>
+                      <td data-rotulo="Saídas" className="alinhado-direita gasto">{formatarDinheiro(mes.saidas)}</td>
                       <td
+                        data-rotulo="Saldo"
                         className={`alinhado-direita ${mes.saldo < 0 ? 'gasto' : 'ganho'}`}
                       >
                         {formatarDinheiro(mes.saldo)}
                       </td>
                       <td
+                        data-rotulo="Acumulado"
                         className={`alinhado-direita ${
                           mes.saldoAcumulado < 0 ? 'gasto' : 'ganho'
                         }`}
@@ -170,10 +172,11 @@ function Projecao() {
                     <tr key={item.id}>
                       {/* A data é a do primeiro mês projetado; nos meses
                           seguintes cai no mesmo dia. */}
-                      <td>{formatarData(item.data)}</td>
-                      <td>{item.descricao}</td>
-                      <td>{item.categoria}</td>
+                      <td data-rotulo="Data prevista">{formatarData(item.data)}</td>
+                      <td data-rotulo="Descrição">{item.descricao}</td>
+                      <td data-rotulo="Categoria">{item.categoria}</td>
                       <td
+                        data-rotulo="Valor"
                         className={`alinhado-direita ${
                           item.tipo === 'GANHO' ? 'ganho' : 'gasto'
                         }`}

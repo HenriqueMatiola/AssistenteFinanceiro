@@ -492,19 +492,20 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
                     return (
                       <tr key={item.chave} className="linha--prevista">
-                        <td>{formatarData(p.data)}</td>
+                        <td data-rotulo="Data">{formatarData(p.data)}</td>
                         <td>
                           {p.descricao}
                           <span className="etiqueta">Previsto</span>
                         </td>
-                        <td>{p.categoria}</td>
-                        <td>{p.formaDePagamento ?? '—'}</td>
+                        <td data-rotulo="Categoria">{p.categoria}</td>
+                        <td data-rotulo="Pagamento">{p.formaDePagamento ?? '—'}</td>
                         <td
+                          data-rotulo="Valor"
                           className={`alinhado-direita ${p.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}
                         >
                           {p.tipo === 'GANHO' ? '+' : '−'} {formatarDinheiro(p.valor)}
                         </td>
-                        <td>
+                        <td data-rotulo="Situação">
                           <span className="situacao situacao--pendente">
                             {rotuloDoStatus(p.tipo, 'PENDENTE')}
                           </span>
@@ -533,7 +534,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
                   return (
                     <tr key={item.chave}>
-                      <td>{formatarData(t.data)}</td>
+                      <td data-rotulo="Data">{formatarData(t.data)}</td>
                       <td>
                         {t.descricao}
                         {parcela && <span className="marcador"> {parcela}</span>}
@@ -543,14 +544,15 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                           </span>
                         )}
                       </td>
-                      <td>{t.categoria}</td>
-                      <td>{t.formaDePagamento ?? '—'}</td>
+                      <td data-rotulo="Categoria">{t.categoria}</td>
+                      <td data-rotulo="Pagamento">{t.formaDePagamento ?? '—'}</td>
                       <td
+                        data-rotulo="Valor"
                         className={`alinhado-direita ${t.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}
                       >
                         {t.tipo === 'GANHO' ? '+' : '−'} {formatarDinheiro(t.valor)}
                       </td>
-                      <td>
+                      <td data-rotulo="Situação">
                         <span
                           className={
                             t.status === 'PENDENTE' ? 'situacao situacao--pendente' : 'situacao'

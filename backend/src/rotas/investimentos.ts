@@ -1,8 +1,9 @@
 /**
  * Rotas de investimentos.
  *
- * A listagem busca a cotação de cada ativo AO VIVO e calcula lucro/prejuízo na
- * hora. Nada de preço é gravado: um valor guardado envelhece em minutos e
+ * O banco guarda OPERAÇÕES (compras e vendas). A posição de cada ativo é
+ * calculada a partir delas a cada consulta, e a cotação é buscada ao vivo:
+ * nada de preço fica gravado, porque preço guardado envelhece em minutos e
  * passaria a mentir sobre o patrimônio.
  *
  * Se a fonte de cotação não responder, o ativo aparece assim mesmo — com o que
@@ -15,9 +16,11 @@ import { Router } from 'express';
 import { prisma } from '../prisma.ts';
 import { idDoUsuarioLogado } from '../auth.ts';
 import { responderErro } from '../respostas.ts';
-import { ErroDeValidacao, validarData, validarId, validarValor } from '../validacao.ts';
+import { ErroDeValidacao, intervaloDoMes, validarData, validarId, validarValor } from '../validacao.ts';
 import { calcularPosicao, somarCarteira } from '../investimentos.ts';
+import { consolidarPorAtivo, resumirPorClasse } from '../carteira.ts';
 import { fonteDeCotacao } from '../cotacoes.ts';
+import { ClasseDeAtivo, TipoDeOperacao } from '../generated/prisma/enums.ts';
 
 export const rotasDeInvestimentos = Router();
 
@@ -41,24 +44,39 @@ function validarAtivo(bruto: unknown): string {
   return ativo;
 }
 
-function validarApelido(bruto: unknown): string | null {
-  if (typeof bruto !== 'string' || !bruto.trim()) {
-    return null;
+function validarTipoDeOperacao(bruto: unknown): TipoDeOperacao {
+  if (bruto !== TipoDeOperacao.COMPRA && bruto !== TipoDeOperacao.VENDA) {
+    throw new ErroDeValidacao('Tipo inválido. Use COMPRA ou VENDA.');
+  }
+  return bruto;
+}
+
+/**
+ * Em que cesta o ativo entra no resumo. Quando não informada, é deduzida do
+ * próprio código: na B3, papéis terminados em 11 são fundos, o resto com
+ * sufixo .SA são ações, e pares contra o dólar são cripto.
+ */
+function validarClasse(bruto: unknown, ativo: string): ClasseDeAtivo {
+  if (bruto === undefined || bruto === null || bruto === '') {
+    if (ativo.endsWith('11.SA')) return ClasseDeAtivo.FII;
+    if (ativo.endsWith('.SA')) return ClasseDeAtivo.ACAO;
+    if (ativo.endsWith('-USD')) return ClasseDeAtivo.CRIPTO;
+    return ClasseDeAtivo.OUTRO;
   }
 
-  const apelido = bruto.trim();
+  const classes = Object.values(ClasseDeAtivo) as string[];
 
-  if (apelido.length > 60) {
-    throw new ErroDeValidacao('Apelido longo demais (máximo 60 caracteres).');
+  if (typeof bruto !== 'string' || !classes.includes(bruto)) {
+    throw new ErroDeValidacao(`Classe inválida. Use uma de: ${classes.join(', ')}.`);
   }
 
-  return apelido;
+  return bruto as ClasseDeAtivo;
 }
 
 /**
  * Quantidade com até 8 casas — cripto se compra em fração.
- * Devolve texto, e não número, para chegar ao DECIMAL do Postgres sem passar
- * por nenhuma conversão que possa perder casas.
+ * Devolve texto para chegar ao DECIMAL do Postgres sem passar por nenhuma
+ * conversão que possa perder casas.
  */
 function validarQuantidade(bruto: unknown): string {
   const numero = typeof bruto === 'string' ? Number(bruto.replace(',', '.')) : bruto;
@@ -77,114 +95,236 @@ function validarQuantidade(bruto: unknown): string {
   return numero.toFixed(8);
 }
 
-/** Investimento inexistente, ou de outro usuário: vira 404. */
-class InvestimentoNaoEncontrado extends Error {}
+/** Operação inexistente, ou de outro usuário: vira 404. */
+class OperacaoNaoEncontrada extends Error {}
+
+// --- Montagem da carteira ---------------------------------------------------
+
+interface OperacaoDoBanco {
+  id: number;
+  ativo: string;
+  classe: ClasseDeAtivo;
+  tipo: TipoDeOperacao;
+  data: Date;
+  quantidade: { toNumber(): number };
+  valor: { toNumber(): number };
+}
+
+function paraResposta(o: OperacaoDoBanco) {
+  return {
+    id: o.id,
+    ativo: o.ativo,
+    classe: o.classe,
+    tipo: o.tipo,
+    data: o.data.toISOString().slice(0, 10),
+    quantidade: o.quantidade.toNumber(),
+    valor: o.valor.toNumber(),
+  };
+}
 
 // --- Rotas ------------------------------------------------------------------
 
 /**
  * GET /api/investimentos
- * A carteira com cotação ao vivo, lucro/prejuízo por ativo e o total.
+ *
+ * A carteira: uma linha por ativo, com quantidade em mãos, preço médio pago,
+ * cotação ao vivo e resultado. Junto vão o total geral e a quebra por tipo de
+ * ativo (ações, FIIs, cripto).
  */
 rotasDeInvestimentos.get('/', async (req, res) => {
   try {
-    const investimentos = await prisma.investimento.findMany({
+    const operacoes = await prisma.operacao.findMany({
       where: { usuarioId: idDoUsuarioLogado(req) },
-      orderBy: [{ dataDaCompra: 'desc' }, { id: 'desc' }],
+      orderBy: [{ data: 'asc' }, { id: 'asc' }],
     });
 
-    // Uma busca só para a carteira inteira, sem repetir códigos: dois aportes
-    // no mesmo papel não viram duas requisições.
-    const codigos = [...new Set(investimentos.map((i) => i.ativo))];
+    // Consolida ANTES de buscar preço: assim uma cotação é pedida por ativo,
+    // e não por operação — dez compras de PETR4 são uma requisição só.
+    const posicoes = consolidarPorAtivo(
+      operacoes.map((o) => ({
+        ativo: o.ativo,
+        classe: o.classe,
+        tipo: o.tipo,
+        data: o.data.toISOString().slice(0, 10),
+        quantidade: o.quantidade.toNumber(),
+        valor: o.valor.toNumber(),
+      }))
+    );
+
+    // Ativo já vendido por inteiro não precisa de cotação: não há posição para
+    // avaliar, só o lucro que já foi realizado.
+    const codigos = posicoes.filter((p) => p.quantidade > 0).map((p) => p.ativo);
     const cotacoes = await fonteDeCotacao.buscar(codigos);
 
-    const posicoes = investimentos.map((i) => {
-      const quantidade = i.quantidade.toNumber();
-      const valorPago = i.valorPago.toNumber();
-      const cotacao = cotacoes.get(i.ativo) ?? null;
-
-      const calculo = calcularPosicao({ quantidade, valorPago }, cotacao?.preco ?? null);
+    const ativos = posicoes.map((p) => {
+      const cotacao = cotacoes.get(p.ativo) ?? null;
+      const calculo = calcularPosicao(
+        { quantidade: p.quantidade, valorPago: p.custoTotal },
+        p.quantidade > 0 ? (cotacao?.preco ?? null) : null
+      );
 
       return {
-        id: i.id,
-        ativo: i.ativo,
-        apelido: i.apelido,
-        dataDaCompra: i.dataDaCompra.toISOString().slice(0, 10),
-        quantidade,
-        valorPago,
+        ativo: p.ativo,
+        classe: p.classe,
+        quantidade: p.quantidade,
+        quantidadeVendida: p.quantidadeVendida,
+        /** Custo do que ainda está em carteira. */
+        investido: p.custoTotal,
+        precoMedio: p.precoMedio,
+        /** Resultado das vendas já feitas — dinheiro que já entrou. */
+        lucroRealizado: p.lucroRealizado,
+
         /** Já em reais: ativos cotados em outra moeda vêm convertidos. */
         cotacao: cotacao?.preco ?? null,
         moedaOriginal: cotacao?.moedaOriginal ?? null,
         precoOriginal: cotacao?.precoOriginal ?? null,
-        /** Taxa usada na conversão, ou null se o ativo já cotava em reais. */
         cambio: cotacao?.cambio ?? null,
-        ...calculo,
+
+        valorAtual: calculo.valorAtual,
+        /** Lucro "no papel": o que se ganharia vendendo tudo agora. */
+        lucro: calculo.lucro,
+        variacao: calculo.variacao,
       };
     });
 
+    const emCarteira = ativos.filter((a) => a.quantidade > 0);
+
     res.json({
-      investimentos: posicoes,
-      total: somarCarteira(posicoes),
-      /** Quando true, a tela avisa que os números estão incompletos. */
+      ativos,
+      porClasse: resumirPorClasse(
+        ativos.map((a) => ({
+          classe: a.classe,
+          quantidade: a.quantidade,
+          custoTotal: a.investido,
+          valorAtual: a.valorAtual,
+        }))
+      ),
+      total: {
+        ...somarCarteira(
+          emCarteira.map((a) => ({ valorPago: a.investido, valorAtual: a.valorAtual }))
+        ),
+        /** Somado de todas as vendas, mesmo de ativos que não estão mais na carteira. */
+        lucroRealizado:
+          Math.round(ativos.reduce((soma, a) => soma + a.lucroRealizado, 0) * 100) / 100,
+      },
       cotacaoIndisponivel: codigos.length > 0 && cotacoes.size < codigos.length,
     });
   } catch (erro) {
-    responderErro(res, erro, 'listar os investimentos');
+    responderErro(res, erro, 'montar a carteira');
   }
 });
 
-/** POST /api/investimentos — registra uma compra. */
+/**
+ * GET /api/investimentos/operacoes?mes=2026-08&tipo=COMPRA
+ * O histórico do que foi comprado e vendido. Sem filtro, devolve tudo.
+ */
+rotasDeInvestimentos.get('/operacoes', async (req, res) => {
+  try {
+    const filtro: {
+      usuarioId: number;
+      tipo?: TipoDeOperacao;
+      data?: { gte: Date; lt: Date };
+    } = { usuarioId: idDoUsuarioLogado(req) };
+
+    const { mes, tipo } = req.query;
+
+    if (typeof tipo === 'string' && tipo !== '') {
+      filtro.tipo = validarTipoDeOperacao(tipo);
+    }
+    if (typeof mes === 'string' && mes !== '') {
+      filtro.data = intervaloDoMes(mes);
+    }
+
+    const operacoes = await prisma.operacao.findMany({
+      where: filtro,
+      orderBy: [{ data: 'desc' }, { id: 'desc' }],
+    });
+
+    res.json({ operacoes: operacoes.map(paraResposta) });
+  } catch (erro) {
+    responderErro(res, erro, 'listar as operações');
+  }
+});
+
+/** POST /api/investimentos — registra uma compra ou uma venda. */
 rotasDeInvestimentos.post('/', async (req, res) => {
   try {
     const corpo = req.body as Record<string, unknown>;
+    const usuarioId = idDoUsuarioLogado(req);
 
-    const investimento = await prisma.investimento.create({
+    const ativo = validarAtivo(corpo['ativo']);
+    const tipo = validarTipoDeOperacao(corpo['tipo'] ?? TipoDeOperacao.COMPRA);
+    const quantidade = validarQuantidade(corpo['quantidade']);
+
+    // Vender o que não se tem produziria uma posição negativa, que não existe
+    // no mundo real. Recusar aqui é mais honesto que "consertar" depois.
+    if (tipo === TipoDeOperacao.VENDA) {
+      const anteriores = await prisma.operacao.findMany({
+        where: { usuarioId, ativo },
+        orderBy: [{ data: 'asc' }, { id: 'asc' }],
+      });
+
+      const [posicao] = consolidarPorAtivo(
+        anteriores.map((o) => ({
+          ativo: o.ativo,
+          classe: o.classe,
+          tipo: o.tipo,
+          data: o.data.toISOString().slice(0, 10),
+          quantidade: o.quantidade.toNumber(),
+          valor: o.valor.toNumber(),
+        }))
+      );
+
+      const emMaos = posicao?.quantidade ?? 0;
+
+      if (Number(quantidade) > emMaos) {
+        throw new ErroDeValidacao(
+          emMaos === 0
+            ? `Você não tem ${ativo} em carteira para vender.`
+            : `Você tem ${emMaos} de ${ativo}; não dá para vender ${Number(quantidade)}.`
+        );
+      }
+    }
+
+    const operacao = await prisma.operacao.create({
       data: {
         // O dono vem do token, nunca do corpo da requisição.
-        usuarioId: idDoUsuarioLogado(req),
-        ativo: validarAtivo(corpo['ativo']),
-        apelido: validarApelido(corpo['apelido']),
-        dataDaCompra: validarData(corpo['dataDaCompra']),
-        quantidade: validarQuantidade(corpo['quantidade']),
-        valorPago: validarValor(corpo['valorPago']),
+        usuarioId,
+        ativo,
+        classe: validarClasse(corpo['classe'], ativo),
+        tipo,
+        data: validarData(corpo['data']),
+        quantidade,
+        valor: validarValor(corpo['valor']),
       },
     });
 
-    res.status(201).json({
-      investimento: {
-        id: investimento.id,
-        ativo: investimento.ativo,
-        apelido: investimento.apelido,
-        dataDaCompra: investimento.dataDaCompra.toISOString().slice(0, 10),
-        quantidade: investimento.quantidade.toNumber(),
-        valorPago: investimento.valorPago.toNumber(),
-      },
-    });
+    res.status(201).json({ operacao: paraResposta(operacao) });
   } catch (erro) {
-    responderErro(res, erro, 'registrar o investimento');
+    responderErro(res, erro, 'registrar a operação');
   }
 });
 
-/** DELETE /api/investimentos/:id */
+/** DELETE /api/investimentos/:id — apaga uma operação do histórico. */
 rotasDeInvestimentos.delete('/:id', async (req, res) => {
   try {
     const id = validarId(req.params.id);
     const usuarioId = idDoUsuarioLogado(req);
 
     // O filtro por usuarioId no próprio delete é o que impede alguém de apagar
-    // a posição de outra pessoa adivinhando o número.
-    const { count } = await prisma.investimento.deleteMany({ where: { id, usuarioId } });
+    // a operação de outra pessoa adivinhando o número.
+    const { count } = await prisma.operacao.deleteMany({ where: { id, usuarioId } });
 
     if (count === 0) {
-      throw new InvestimentoNaoEncontrado();
+      throw new OperacaoNaoEncontrada();
     }
 
     res.status(204).end();
   } catch (erro) {
-    if (erro instanceof InvestimentoNaoEncontrado) {
-      res.status(404).json({ erro: 'Investimento não encontrado.' });
+    if (erro instanceof OperacaoNaoEncontrada) {
+      res.status(404).json({ erro: 'Operação não encontrada.' });
       return;
     }
-    responderErro(res, erro, 'excluir o investimento');
+    responderErro(res, erro, 'excluir a operação');
   }
 });

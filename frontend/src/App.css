@@ -717,6 +717,9 @@ form button[type='submit']:hover:not(:disabled) {
      largura seriam um terço do espaço só para navegar. */
   .aplicativo {
     grid-template-columns: 1fr;
+    /* Sem isto, as duas linhas dividem os 100vh do grid igualmente e a barra
+       de navegação estica até um terço da tela quando o conteúdo é curto. */
+    grid-template-rows: auto 1fr;
     background: var(--fundo);
   }
 
@@ -818,4 +821,197 @@ form button[type='submit']:hover:not(:disabled) {
   font-family: var(--fonte-dados);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ==========================================================================
+   Tabelas no celular
+   ========================================================================== */
+
+/*
+ * Numa tela de 390px, uma tabela de sete colunas só cabe rolando de lado — e
+ * quem rola perde justamente a última coluna, que é onde ficam os botões.
+ * Aqui cada linha vira um cartão: o cabeçalho some e cada célula passa a
+ * carregar o próprio rótulo, lido de `data-rotulo`.
+ */
+@media (max-width: 640px) {
+  .tabela thead {
+    display: none;
+  }
+
+  .tabela,
+  .tabela tbody,
+  .tabela td {
+    display: block;
+    width: 100%;
+  }
+
+  /* Flex em coluna, e não block, para as células poderem ser reordenadas: a
+     descrição precisa subir para o topo do cartão. */
+  .tabela tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--borda);
+    border-radius: var(--raio-pequeno);
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 0.6rem;
+    background: var(--superficie);
+  }
+
+  /* A célula sem rótulo é o nome da coisa — a descrição do lançamento, o
+     código do ativo. Ela vira o título do cartão. */
+  .tabela td:not([data-rotulo]) {
+    order: -1;
+    display: block;
+    font-size: 1rem;
+    font-weight: 500;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
+    border-bottom: 1px solid var(--borda);
+  }
+
+  /* Menos os botões, que também não têm rótulo mas pertencem ao rodapé. */
+  .tabela td:not([data-rotulo]):has(.acoes) {
+    order: 99;
+    font-size: inherit;
+    font-weight: inherit;
+    padding: 0.5rem 0 0;
+    margin: 0;
+    border-bottom: none;
+  }
+
+  /* Dentro deste bloco, `.tabela tr` (0,1,1) vence `.linha--prevista` (0,1,0)
+     na cascata e apagava o realce. Qualificar devolve o peso. */
+  .tabela tr.linha--prevista {
+    border-left: 3px solid var(--ambar-forte);
+    background: var(--superficie-2);
+  }
+
+  .tabela tr.linha--desligada {
+    opacity: 0.5;
+  }
+
+  .tabela tbody tr:hover td {
+    background: transparent;
+  }
+
+  .tabela td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    border-bottom: none;
+    text-align: left;
+  }
+
+  /* O rótulo da coluna passa a acompanhar o valor, dentro da própria célula. */
+  .tabela td::before {
+    content: attr(data-rotulo);
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--texto-suave);
+  }
+
+  /* Célula sem rótulo (a primeira de uma linha de resumo) ocupa a largura. */
+  .tabela td:not([data-rotulo])::before {
+    content: none;
+  }
+
+  /* O alinhamento à direita perde o sentido quando rótulo e valor dividem a
+     linha — o `space-between` já encosta o valor na borda. */
+  .tabela td.alinhado-direita {
+    text-align: right;
+  }
+
+  .acoes {
+    justify-content: flex-end;
+  }
+
+  /* A faixa da conta prevista passa para o topo do cartão. */
+  .linha--prevista td {
+    background: transparent;
+  }
+
+  .linha--prevista {
+    border-left: 3px solid var(--ambar-forte);
+    background: var(--superficie-2);
+  }
+
+  .linha--prevista td:first-child {
+    box-shadow: none;
+  }
+
+  /* Sem cabeçalho, a linha riscada inteira fica ilegível; basta a opacidade. */
+  .linha--desligada td {
+    text-decoration: none;
+  }
+}
+
+/* Dentro do bloco de celular, `.tabela tr` (0,1,1) vence `.linha--prevista`
+   (0,1,0) na cascata e apagava o realce. Qualificar com a tabela devolve o
+   peso — a conta prevista precisa se distinguir do que já foi lançado. */
+@media (max-width: 640px) {
+  .tabela tr.linha--prevista {
+    border-left: 3px solid var(--ambar-forte);
+    background: var(--superficie-2);
+  }
+
+  .tabela tr.linha--desligada {
+    opacity: 0.5;
+  }
+}
+
+/* --- Glossário (tela Início) --- */
+
+.glossario {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.glossario__item {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.glossario__termo {
+  font-family: var(--fonte-display);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.glossario__descricao {
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  /* Em coluna estreita, 150px para o nome deixariam a frase espremida. */
+  .glossario__item {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+}
+
+/* `code` aparece nas mensagens de erro que citam um comando. */
+code {
+  font-family: var(--fonte-dados);
+  font-size: 0.88em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borda);
+}
+
+/* Um botão numa linha de campos precisa descer até a base, para alinhar com
+   os campos ao lado em vez de flutuar na altura do rótulo deles. */
+.campo--acao {
+  flex: 0 0 auto;
+  justify-content: flex-end;
 }

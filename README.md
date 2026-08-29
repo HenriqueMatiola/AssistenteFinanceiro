@@ -96,9 +96,10 @@ Depois abra <http://localhost:5173> no navegador.
 | `DELETE /api/recorrencias/:id` | **Protegida.** Apaga a recorrência de vez |
 | `GET /api/recorrencias/previstas` | **Protegida.** As recorrências que ainda não viraram lançamento no mês, com a data prevista. `?mes=2026-08` |
 | `POST /api/recorrencias/:id/lancar` | **Protegida.** Transforma a previsão de um mês em lançamento de verdade, vinculado à recorrência. `{mes, valor?}`; 409 se já foi lançada |
-| `GET /api/investimentos` | **Protegida.** A carteira com cotação buscada ao vivo, lucro/prejuízo por ativo e total |
-| `POST /api/investimentos` | **Protegida.** Registra uma compra `{ativo, apelido?, dataDaCompra, quantidade, valorPago}` |
-| `DELETE /api/investimentos/:id` | **Protegida.** Apaga a posição |
+| `GET /api/investimentos` | **Protegida.** A carteira: posição por ativo com preço médio e cotação ao vivo, resumo por tipo de ativo e total |
+| `GET /api/investimentos/operacoes` | **Protegida.** Histórico de compras e vendas. Filtros: `?mes=2026-08` e `?tipo=VENDA` |
+| `POST /api/investimentos` | **Protegida.** Registra uma operação `{ativo, tipo, data, quantidade, valor, classe?}`. Recusa vender mais do que se tem |
+| `DELETE /api/investimentos/:id` | **Protegida.** Apaga uma operação do histórico |
 | `GET /api/projecao` | **Protegida.** Saldo projetado por mês. `?inicio=2026-09&meses=6` (padrão: 6 meses a partir do mês que vem) |
 
 ## Banco de dados
@@ -126,6 +127,19 @@ o aplica no banco.
 - **A tela de Lançamentos mostra previsões e lançamentos na mesma lista**,
   ordenados por data. As previstas vêm marcadas e trazem o botão de marcar
   como paga, que é o que as converte em lançamento.
+- **O banco guarda OPERAÇÕES, não posições.** Cada compra e cada venda é
+  uma linha; a posição de um ativo é a soma delas. É o que permite ter
+  histórico e calcular preço médio depois de uma venda parcial.
+- **Preço médio segue o método brasileiro**: comprar recalcula a média;
+  vender tira a quantidade e o custo proporcional, mas NÃO mexe na média —
+  vender metade não torna a outra metade mais cara. O lucro da venda vira
+  "realizado", separado do lucro "no papel" de quem ainda segura o ativo.
+- **No celular, as tabelas viram cartões.** Numa tela de 390px uma tabela
+  de sete colunas só cabe rolando de lado, e quem rola perde justamente a
+  última coluna, onde ficam os botões. Cada célula carrega o próprio
+  rótulo em `data-rotulo`, que o CSS exibe quando não há cabeçalho.
+- **Um 401 encerra a sessão e volta ao login.** Sem isso, um token
+  expirado deixaria todas as telas mostrando "Erro 401" sem saída óbvia.
 - **Nenhuma cotação é gravada.** Preço guardado envelhece em minutos e
   passaria a mentir sobre o patrimônio; ele é buscado a cada abertura da
   tela, com cache de 30 s em memória só para não virar rajada.
@@ -161,7 +175,7 @@ o aplica no banco.
 
 ## Estado atual
 
-Todas as etapas do plano estão feitas, menos o polimento final:
+MVP completo — todas as sete etapas do plano estão feitas:
 
 - **0–1** — repositório, PostgreSQL no Docker, login com hash e JWT
 - **2** — tabela `transacoes` e tela de Lançamentos
@@ -169,9 +183,15 @@ Todas as etapas do plano estão feitas, menos o polimento final:
 - **4** — recorrências, motor de projeção (com testes) e tela de Projeção
 - **5** — lançamentos completos: descrição, situação, forma de pagamento,
   fixo/variável, parcelamento automático e balanço com sobra do mês anterior
-- **6** — Investimentos: carteira com cotação ao vivo e lucro/prejuízo
-- **visual** — identidade própria, barra lateral e trilha de meses
-- **balanço com previsão** — recorrências entram no mês antes de virar
-  lançamento, sem dupla contagem, e aparecem na lista de Lançamentos
+- **6** — Investimentos: operações de compra e venda, preço médio, carteira
+  com cotação ao vivo, resumo por tipo de ativo e histórico filtrável
+- **7** — polimento: identidade visual própria, barra lateral, trilha de
+  meses, tabelas que viram cartões no celular e tratamento de sessão expirada
 
-Falta a Etapa 7 — polimento (erros nas telas, revisão visual, celular).
+Além do plano: o balanço passou a incluir as recorrências previstas, sem
+dupla contagem.
+
+## O que vem depois
+
+- Agente de WhatsApp (fase 2), com plano próprio
+- Hospedagem em produção
