@@ -72,6 +72,7 @@ interface TransacaoDoBanco {
   parcelaAtual: number | null;
   parcelasTotais: number | null;
   grupoDeParcelas: string | null;
+  ehSobraDoMesAnterior: boolean;
 }
 
 /**
@@ -93,6 +94,7 @@ function paraResposta(t: TransacaoDoBanco) {
     parcelaAtual: t.parcelaAtual,
     parcelasTotais: t.parcelasTotais,
     grupoDeParcelas: t.grupoDeParcelas,
+    ehSobraDoMesAnterior: t.ehSobraDoMesAnterior,
   };
 }
 
@@ -152,7 +154,13 @@ rotasDeTransacoes.post('/', async (req, res) => {
 
     const usuarioId = idDoUsuarioLogado(req);
     const dataInicial = validarData(corpo['data']);
-    const quantidadeDeParcelas = validarParcelas(corpo['parcelas']);
+    const ehSobraDoMesAnterior = corpo['ehSobraDoMesAnterior'] === true;
+
+    // Uma sobra do mês passado é um valor único, não uma compra a prazo.
+    const quantidadeDeParcelas = ehSobraDoMesAnterior
+      ? 1
+      : validarParcelas(corpo['parcelas']);
+
     const statusPedido = corpo['status'] === undefined
       ? StatusTransacao.CONCLUIDA
       : validarStatus(corpo['status']);
@@ -168,6 +176,7 @@ rotasDeTransacoes.post('/', async (req, res) => {
       tipo: validarTipo(corpo['tipo']),
       formaDePagamento: validarFormaDePagamento(corpo['formaDePagamento']),
       classificacao: validarClassificacao(corpo['classificacao']),
+      ehSobraDoMesAnterior,
     };
 
     if (quantidadeDeParcelas === 1) {

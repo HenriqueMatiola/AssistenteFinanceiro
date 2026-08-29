@@ -84,7 +84,7 @@ Depois abra <http://localhost:5173> no navegador.
 | `POST /api/login` | Recebe `{login, senha}` e devolve `{token, usuario}` |
 | `GET /api/eu` | **Protegida.** Devolve o usuário dono do token enviado em `Authorization: Bearer <token>` |
 | `GET /api/transacoes` | **Protegida.** Lista os lançamentos do usuário do token. Filtros opcionais: `?mes=2026-08` e `?tipo=GASTO` |
-| `POST /api/transacoes` | **Protegida.** Cria um lançamento. Com `parcelas: 12`, cria as 12 de uma vez. Devolve sempre uma lista. O dono vem do token, nunca do corpo |
+| `POST /api/transacoes` | **Protegida.** Cria um lançamento. Com `parcelas: 12`, cria as 12 de uma vez; com `ehSobraDoMesAnterior: true`, o valor vira sobra em vez de entrada. Devolve sempre uma lista |
 | `PATCH /api/transacoes/:id` | **Protegida.** Marca como pago/recebido: `{status: "CONCLUIDA"}` |
 | `DELETE /api/transacoes/:id` | **Protegida.** Apaga o lançamento; com `?todasAsParcelas=true`, apaga a compra parcelada inteira |
 | `GET /api/resumo` | **Protegida.** Balanço do mês: sobra anterior, entradas, saídas, saldo, disponível, e a composição em realizado / lançado-pendente / previsto pelas recorrências. `?mes=2026-08` |
@@ -134,6 +134,12 @@ o aplica no banco.
   vender tira a quantidade e o custo proporcional, mas NÃO mexe na média —
   vender metade não torna a outra metade mais cara. O lucro da venda vira
   "realizado", separado do lucro "no papel" de quem ainda segura o ativo.
+- **A sobra do mês anterior pode ser lançada à mão.** O lançamento marcado
+  como sobra fica FORA das entradas, do gráfico de categorias e das
+  faturas — ele não é receita do mês, é o ponto de partida dele. Serve para
+  quem começa a usar o app com dinheiro já em conta, quando o cálculo
+  automático (soma dos meses anteriores) daria zero. Nos meses seguintes
+  ele entra no acumulado normalmente.
 - **No celular, as tabelas viram cartões.** Numa tela de 390px uma tabela
   de sete colunas só cabe rolando de lado, e quem rola perde justamente a
   última coluna, onde ficam os botões. Cada célula carrega o próprio

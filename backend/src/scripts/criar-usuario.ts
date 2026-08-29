@@ -9,11 +9,16 @@ import { createInterface, type Interface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../prisma.ts';
+import {
+  validarNomeDeUsuario,
+  validarEmail,
+  validarSenha,
+  TAMANHO_MINIMO_SENHA,
+} from '../credenciais.ts';
 
 // Quanto maior, mais lento (de propósito) fica calcular o hash — o que atrapalha
 // quem tentar adivinhar senhas por força bruta. 10 é o padrão recomendado.
 const CUSTO_DO_HASH = 10;
-const TAMANHO_MINIMO_SENHA = 8;
 
 /** Faz as perguntas: no terminal, uma a uma; fora dele, lendo tudo de uma vez. */
 interface Perguntador {
@@ -77,16 +82,17 @@ async function main(): Promise<void> {
     const nome = (await perguntar.texto('Nome (ex: Henrique): ')).trim();
     if (!nome) throw new Error('O nome não pode ficar vazio.');
 
-    const login = (await perguntar.texto('Login (sem espaços, ex: henrique): '))
-      .trim()
-      .toLowerCase();
-    if (!login) throw new Error('O login não pode ficar vazio.');
-    if (/\s/.test(login)) throw new Error('O login não pode conter espaços.');
+    // As regras de formato vêm de credenciais.ts, as mesmas que a tela de
+    // cadastro usa — senão o script criaria contas que a tela recusaria.
+    const login = validarNomeDeUsuario(
+      await perguntar.texto('Nome de usuário (sem espaços, ex: henrique): ')
+    );
 
-    const senha = await perguntar.senha('Senha: ');
-    if (senha.length < TAMANHO_MINIMO_SENHA) {
-      throw new Error(`A senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`);
-    }
+    // Em branco é aceito: dá para entrar só pelo nome de usuário.
+    const emailDigitado = (await perguntar.texto('E-mail (opcional, Enter para pular): ')).trim();
+    const email = emailDigitado ? validarEmail(emailDigitado) : null;
+
+    const senha = validarSenha(await perguntar.senha('Senha: '));
 
     const confirmacao = await perguntar.senha('Repita a senha: ');
     if (senha !== confirmacao) throw new Error('As senhas não conferem.');
@@ -94,7 +100,7 @@ async function main(): Promise<void> {
     const senhaHash = await bcrypt.hash(senha, CUSTO_DO_HASH);
 
     const usuario = await prisma.usuario.create({
-      data: { nome, login, senhaHash },
+      data: { nome, login, email, senhaHash },
       select: { id: true, nome: true, login: true },
     });
 
@@ -116,7 +122,7 @@ async function main(): Promise<void> {
 main().catch((erro: unknown) => {
   // Erro P2002 = violação de restrição UNIQUE (neste caso, login repetido).
   if (typeof erro === 'object' && erro !== null && 'code' in erro && erro.code === 'P2002') {
-    console.error('\n✖ Já existe um usuário com esse login.\n');
+    console.error('\n✖ Já existe um usuário com esse nome de usuário ou e-mail.\n');
   } else {
     console.error(`\n✖ ${erro instanceof Error ? erro.message : String(erro)}\n`);
   }

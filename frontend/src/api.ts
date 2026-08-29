@@ -12,6 +12,8 @@ export interface Usuario {
   id: number;
   nome: string;
   login: string;
+  /** Nulo nas contas criadas antes de o cadastro pedir e-mail. */
+  email: string | null;
 }
 
 /** Erro vindo da API, carregando o código HTTP junto da mensagem. */
@@ -87,13 +89,31 @@ async function chamar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> 
   return corpo as T;
 }
 
-export async function fazerLogin(
-  login: string,
-  senha: string
-): Promise<{ token: string; usuario: Usuario }> {
+export interface Sessao {
+  token: string;
+  usuario: Usuario;
+}
+
+/** `identificador` é o nome de usuário OU o e-mail — o backend aceita os dois. */
+export async function fazerLogin(identificador: string, senha: string): Promise<Sessao> {
   return chamar('/api/login', {
     method: 'POST',
-    body: JSON.stringify({ login, senha }),
+    body: JSON.stringify({ login: identificador, senha }),
+  });
+}
+
+/**
+ * Cria a conta e já devolve a sessão pronta: quem se cadastrou entra direto,
+ * em vez de digitar as mesmas credenciais de novo na tela ao lado.
+ */
+export async function criarConta(dados: {
+  login: string;
+  email: string;
+  senha: string;
+}): Promise<Sessao> {
+  return chamar('/api/cadastro', {
+    method: 'POST',
+    body: JSON.stringify(dados),
   });
 }
 
@@ -130,6 +150,8 @@ export interface Transacao {
   parcelasTotais: number | null;
   /** Liga entre si as parcelas da mesma compra. */
   grupoDeParcelas: string | null;
+  /** Dinheiro que veio do mês passado, e não receita nova do mês. */
+  ehSobraDoMesAnterior: boolean;
 }
 
 export interface NovaTransacao {
@@ -144,6 +166,8 @@ export interface NovaTransacao {
   classificacao?: ClassificacaoGasto | '';
   /** 1 (ou ausente) = à vista. Acima disso, o backend cria uma por mês. */
   parcelas?: number;
+  /** Marca o lançamento como o saldo que veio do mês passado. */
+  ehSobraDoMesAnterior?: boolean;
 }
 
 export interface FiltroTransacoes {

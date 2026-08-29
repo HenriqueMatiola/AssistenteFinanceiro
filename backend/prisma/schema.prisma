@@ -14,6 +14,12 @@ model Usuario {
   id        Int      @id @default(autoincrement())
   nome      String
   login     String   @unique
+
+  /// O segundo jeito de entrar: a tela de login aceita o nome de usuário ou
+  /// o e-mail. Opcional porque contas criadas antes deste campo não têm um —
+  /// elas continuam entrando pelo nome de usuário.
+  email     String?  @unique
+
   senhaHash String   @map("senha_hash")
   criadoEm  DateTime @default(now()) @map("criado_em")
 
@@ -59,6 +65,16 @@ model Transacao {
   /// Nulos quando a compra foi à vista.
   parcelaAtual   Int? @map("parcela_atual")
   parcelasTotais Int? @map("parcelas_totais")
+
+  /// Marca o lançamento como o dinheiro que veio do mês passado, e não
+  /// como uma receita nova.
+  ///
+  /// Serve para quem começa a usar o app no meio da vida: sem isto, o
+  /// primeiro mês mostraria sobra zero mesmo havendo dinheiro em conta.
+  /// Um lançamento assim fica fora das entradas, do gráfico de categorias
+  /// e das faturas — ele não é gasto nem ganho do mês, é o ponto de
+  /// partida dele.
+  ehSobraDoMesAnterior Boolean @default(false) @map("eh_sobra_do_mes_anterior")
 
   /// Liga entre si as parcelas da MESMA compra, para dar para apagar as 12 de
   /// uma vez em vez de caçar uma por uma.

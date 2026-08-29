@@ -78,21 +78,32 @@ rotasDeResumo.get('/', async (req, res) => {
     const mes = mesPedido(req.query['mes']);
     const intervalo = intervaloDoMes(mes);
 
-    const [doMes, dosMesesAnteriores, pendentes] = await Promise.all([
+    const [doMes, dosMesesAnteriores, sobraLancada, pendentes] = await Promise.all([
       // Agrupado também por status, para separar o que já aconteceu do que
       // ainda vai acontecer sem precisar de uma segunda consulta.
+      // A sobra lançada fica de fora: ela não é receita nem despesa do mês.
       prisma.transacao.groupBy({
         by: ['tipo', 'status'],
-        where: { usuarioId, data: intervalo },
+        where: { usuarioId, data: intervalo, ehSobraDoMesAnterior: false },
         _sum: { valor: true },
       }),
 
       // Tudo que veio antes deste mês. A diferença é a "sobra": o que sobrou
       // (ou faltou) de toda a história até aqui. Só lançamentos — o passado
-      // não recebe previsão.
+      // não recebe previsão. Aqui a sobra lançada CONTA, porque de um mês
+      // futuro ela é apenas mais um valor que já estava na conta.
       prisma.transacao.groupBy({
         by: ['tipo'],
         where: { usuarioId, data: { lt: intervalo.gte } },
+        _sum: { valor: true },
+      }),
+
+      // A sobra que o próprio usuário lançou dentro deste mês, para quem
+      // começou a usar o app no meio da vida e precisa informar o ponto de
+      // partida à mão.
+      prisma.transacao.groupBy({
+        by: ['tipo'],
+        where: { usuarioId, data: intervalo, ehSobraDoMesAnterior: true },
         _sum: { valor: true },
       }),
 
@@ -117,9 +128,15 @@ rotasDeResumo.get('/', async (req, res) => {
       realizado.saidas + pendenteLancado.saidas + previsto.saidas
     );
 
+    // A sobra tem duas origens que se somam: o resultado acumulado dos meses
+    // já registrados e o valor que o usuário informou à mão neste mês. Quem
+    // usa o app desde o começo só tem a primeira; quem começou no meio,
+    // só a segunda.
     const sobraDoMesAnterior = arredondarCentavos(
       totalDe(dosMesesAnteriores, TipoTransacao.GANHO) -
-        totalDe(dosMesesAnteriores, TipoTransacao.GASTO)
+        totalDe(dosMesesAnteriores, TipoTransacao.GASTO) +
+        totalDe(sobraLancada, TipoTransacao.GANHO) -
+        totalDe(sobraLancada, TipoTransacao.GASTO)
     );
 
     const saldo = arredondarCentavos(entradas - saidas);
@@ -168,7 +185,13 @@ rotasDeResumo.get('/categorias', async (req, res) => {
     const [porCategoria, pendentes] = await Promise.all([
       prisma.transacao.groupBy({
         by: ['categoria'],
-        where: { usuarioId, tipo: TipoTransacao.GASTO, data: intervalo },
+        // A sobra do mês passado não é um gasto: fora do gráfico.
+        where: {
+          usuarioId,
+          tipo: TipoTransacao.GASTO,
+          data: intervalo,
+          ehSobraDoMesAnterior: false,
+        },
         _sum: { valor: true },
       }),
       previsaoDoMes(usuarioId, mes, intervalo),
@@ -221,7 +244,13 @@ rotasDeResumo.get('/formas-de-pagamento', async (req, res) => {
     const [porForma, pendentes] = await Promise.all([
       prisma.transacao.groupBy({
         by: ['formaDePagamento', 'status'],
-        where: { usuarioId, tipo: TipoTransacao.GASTO, data: intervalo },
+        // A sobra do mês passado não entra em fatura de cartão nenhuma.
+        where: {
+          usuarioId,
+          tipo: TipoTransacao.GASTO,
+          data: intervalo,
+          ehSobraDoMesAnterior: false,
+        },
         _sum: { valor: true },
       }),
       previsaoDoMes(usuarioId, mes, intervalo),

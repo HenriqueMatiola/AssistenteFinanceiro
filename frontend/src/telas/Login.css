@@ -1,0 +1,546 @@
+/**
+ * Tela de entrada.
+ *
+ * Fica em arquivo próprio porque é a única tela com layout inteiro seu — o
+ * resto do app compartilha o esqueleto de `App.css`. As cores vêm todas dos
+ * tokens: aqui não há hex solto, exceto o branco puro do texto sobre petróleo.
+ */
+
+/*
+ * Duas colunas: a marca à esquerda, o acesso à direita.
+ *
+ * A coluna do acesso tem largura própria, e não uma fração: um formulário de
+ * dois campos esticado por metade de uma tela larga vira um campo boiando no
+ * vazio. Com ela contida, o painel toma o espaço que sobra e a régua ganha
+ * porte — que é onde a identidade da tela mora.
+ */
+.entrada {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr minmax(380px, 34vw);
+  background: var(--superficie);
+
+  /* No tema claro o botão é petróleo sobre branco e salta. No escuro, esse
+     mesmo petróleo encosta na cor do fundo e o botão some — então ali ele
+     clareia. */
+  --botao-entrada: var(--petroleo-900);
+  --botao-entrada-hover: var(--petroleo-800);
+}
+
+@media (prefers-color-scheme: dark) {
+  .entrada {
+    --botao-entrada: var(--petroleo-600);
+    --botao-entrada-hover: var(--petroleo-700);
+  }
+}
+
+/* --- Coluna da marca ------------------------------------------------------ */
+
+.entrada__marca {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2.5rem;
+  padding: clamp(2rem, 5vw, 3.5rem);
+  overflow: hidden;
+  background: var(--petroleo-900);
+  color: var(--petroleo-300);
+  border-right: 1px solid var(--petroleo-700);
+}
+
+/* Um clarão frio no alto à esquerda dá profundidade ao petróleo, que sozinho
+   ficaria uma placa chapada. */
+.entrada__marca::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    120% 90% at 12% 0%,
+    rgba(23, 86, 90, 0.55) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+/* Grão fino por cima de tudo: tira o aspecto de vetor liso e aproxima o painel
+   de papel impresso. É um SVG inline, sem arquivo nem requisição. */
+.entrada__marca::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23r)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+.entrada__identidade,
+.entrada__rodape {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * Régua e frase ficam coladas na base, com a frase logo abaixo do desenho.
+ * Espalhá-las pela altura toda deixava as duas boiando; juntas, a frase lê
+ * como legenda do gráfico — que é o que ela é.
+ */
+.entrada__rodape {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.entrada__logo {
+  font-family: var(--fonte-display);
+  font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #fff;
+  margin: 0;
+}
+
+.entrada__logo-sufixo {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--petroleo-300);
+}
+
+.entrada__frase {
+  font-family: var(--fonte-display);
+  font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: #fff;
+  margin: 0;
+}
+
+/* --- A régua de meses -----------------------------------------------------
+   É a trilha que fica no topo de todas as telas do app, aqui em forma de
+   gráfico. Meses passados sólidos, futuros em contorno: a mesma distinção
+   entre o que já aconteceu e o que ainda vem que o app faz o tempo todo. */
+
+.regua {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(0.35rem, 1.1vw, 0.7rem);
+  height: clamp(140px, 24vh, 230px);
+  /* A linha de base ancora as barras. Sem ela, elas pairam no meio do painel
+     e o desenho perde a leitura de gráfico. */
+  border-bottom: 1px solid var(--petroleo-700);
+  padding-bottom: 0.75rem;
+}
+
+.regua__mes {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  height: 100%;
+}
+
+.regua__barra {
+  width: 100%;
+  height: var(--altura);
+  border-radius: 3px 3px 0 0;
+  background: var(--petroleo-600);
+  /* Os meses vão clareando até o presente: o ano ganha direção de leitura, em
+     vez de doze barras de peso igual. */
+  opacity: calc(0.45 + var(--ordem) * 0.045);
+  transform-origin: bottom;
+  animation: crescer-barra 620ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  /* Cada barra entra depois da anterior: a régua se desenha da esquerda para
+     a direita, como um ano passando. */
+  animation-delay: calc(300ms + var(--ordem) * 55ms);
+}
+
+/* O que ainda não aconteceu é contorno, não preenchimento. */
+.regua__mes--futuro .regua__barra {
+  background: transparent;
+  border: 1px dashed var(--petroleo-600);
+}
+
+/* O mês corrente é o ponto alto da leitura: cor cheia, sem o esmaecimento
+   que os outros recebem. */
+.regua__mes--hoje .regua__barra {
+  background: var(--ambar-forte);
+  opacity: 1;
+}
+
+.regua__sigla {
+  font-family: var(--fonte-dados);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--petroleo-300);
+  opacity: 0.5;
+}
+
+.regua__mes--hoje .regua__sigla {
+  color: var(--ambar-forte);
+  opacity: 1;
+}
+
+@keyframes crescer-barra {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* --- Coluna do acesso ----------------------------------------------------- */
+
+.entrada__acesso {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(1.5rem, 4vw, 3.5rem);
+  background: var(--superficie);
+}
+
+.entrada__caixa {
+  width: 100%;
+  max-width: 340px;
+  margin: auto;
+}
+
+.entrada__titulo {
+  font-family: var(--fonte-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--texto);
+  margin: 0 0 1.9rem;
+}
+
+/* Fecha a coluna e responde à pergunta que um app de duas pessoas levanta:
+   um vê o do outro? Não. */
+.entrada__nota {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--texto-suave);
+  margin: 1.6rem 0 0;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--borda);
+  animation: subir-em-cena 700ms cubic-bezier(0.16, 1, 0.3, 1) 420ms backwards;
+}
+
+.entrada__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+/*
+ * Campo com rótulo acima e uma linha embaixo, em vez da caixa cinza das
+ * referências: menos peso visual, e a linha dá para onde a cor crescer
+ * quando o campo recebe foco.
+ */
+.campo-entrada {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.campo-entrada > label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+
+/*
+ * A linha é do campo inteiro, e não do input: no campo de senha, o botão do
+ * olho fica ao lado dele, e uma borda presa só ao input pararia no meio,
+ * deixando o botão pendurado fora do campo.
+ */
+.campo-entrada__linha {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-bottom: 1px solid var(--borda-forte);
+}
+
+.campo-entrada input {
+  /* `min-width: 0` porque input tem largura mínima própria: sem isto ele não
+     cede espaço ao botão e a linha estoura a coluna. */
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.5rem 0.1rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--texto);
+}
+
+.campo-entrada input:focus {
+  outline: none;
+}
+
+/* A régua âmbar cresce sobre a linha cinza quando o campo recebe foco. Como o
+   input perde o outline, ela é o indicador de foco — e precisa ser inequívoca. */
+.campo-entrada__linha::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--ambar-forte);
+  transform: scaleX(0);
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.campo-entrada__linha:focus-within::after {
+  transform: scaleX(1);
+}
+
+/*
+ * Botão de ver a senha. Fica cinza e discreto: é atalho, não ação principal —
+ * a única coisa que deve puxar o olho nesta coluna é o botão de enviar.
+ */
+.campo-entrada__olho {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--raio-pequeno);
+  background: transparent;
+  color: var(--texto-suave);
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.campo-entrada__olho:hover {
+  color: var(--texto);
+  background: var(--superficie-2);
+}
+
+/*
+ * A regra dita antes de o campo ser preenchido, e não depois de recusado:
+ * "letras sem acento" avisado a tempo evita o erro que "joão" causaria.
+ */
+.campo-entrada__dica {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--texto-suave);
+  margin: 0.15rem 0 0;
+}
+
+.entrada__botao {
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.85rem 1.2rem;
+  margin-top: 0.4rem;
+  border: none;
+  border-radius: var(--raio-pequeno);
+  background: var(--botao-entrada);
+  color: #fff;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 160ms ease;
+}
+
+/* Um brilho âmbar atravessa o botão ao passar o mouse — o único gesto
+   decorativo da tela, e o que confirma que ela está viva. */
+.entrada__botao::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(201, 122, 22, 0.5) 50%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  transition: transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.entrada__botao:hover:not(:disabled) {
+  background: var(--botao-entrada-hover);
+}
+
+.entrada__botao:hover:not(:disabled)::before {
+  transform: translateX(100%);
+}
+
+/* O texto fica acima do brilho. */
+.entrada__botao span {
+  position: relative;
+}
+
+.entrada__botao:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.entrada__botao:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.entrada__erro {
+  font-size: 0.88rem;
+  color: var(--saida);
+  margin: 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--saida);
+}
+
+/* --- Trocar entre entrar e criar conta ------------------------------------ */
+
+.entrada__alternar {
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+  margin: 1.5rem 0 0;
+}
+
+/*
+ * É um <button>, e não um <a>: não leva a lugar nenhum, troca o que a coluna
+ * mostra. Mas precisa PARECER um link, senão ninguém percebe que dá para
+ * clicar — daí o sublinhado âmbar, o mesmo traço que marca o campo em foco.
+ */
+.entrada__link {
+  font: inherit;
+  font-weight: 600;
+  padding: 0 0 1px;
+  border: none;
+  border-bottom: 1px solid var(--ambar-forte);
+  background: none;
+  color: var(--texto);
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.entrada__link:hover {
+  color: var(--ambar);
+}
+
+/* --- Entrada em cena ------------------------------------------------------
+   Uma sequência só, no carregamento: a marca, o formulário, e a régua se
+   desenhando por baixo. A frase fecha, depois que a régua terminou. */
+
+.entrada__identidade,
+.entrada__frase,
+.entrada__caixa {
+  animation: subir-em-cena 700ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/*
+ * Ao trocar de modo, os campos daquele modo são elementos novos no DOM, então
+ * esta animação roda só neles — a senha, que sobrevive à troca, fica parada.
+ * É o que faz o formulário crescer em vez de saltar.
+ */
+.campo-entrada--do-modo {
+  animation: surgir-campo 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes surgir-campo {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Quem pede menos movimento vê a tela pronta, sem a sequência de entrada.
+   A régua continua legível: ela informa pela forma, não pelo movimento. */
+@media (prefers-reduced-motion: reduce) {
+  .entrada__identidade,
+  .entrada__frase,
+  .entrada__caixa,
+  .campo-entrada--do-modo,
+  .regua__barra {
+    animation: none;
+  }
+}
+
+.entrada__identidade {
+  animation-delay: 60ms;
+}
+
+.entrada__caixa {
+  animation-delay: 220ms;
+}
+
+/* Depois da última barra (300ms + 12 × 55ms). */
+.entrada__frase {
+  animation-delay: 980ms;
+}
+
+@keyframes subir-em-cena {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- Telas estreitas ------------------------------------------------------
+   O painel vira uma faixa no topo: a marca continua presente, mas quem
+   precisa da tela é o formulário. */
+
+@media (max-width: 820px) {
+  .entrada {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .entrada__marca {
+    gap: 1.5rem;
+    padding: 1.75rem 1.5rem 1.25rem;
+  }
+
+  /* Numa faixa baixa, doze siglas viram sujeira; as barras sozinhas ainda
+     leem como gráfico — e são elas que dão identidade à tela, então ficam
+     mesmo no celular. */
+  .regua {
+    height: 74px;
+    padding-bottom: 0;
+  }
+
+  .regua__sigla,
+  .entrada__frase {
+    display: none;
+  }
+
+  .entrada__rodape {
+    gap: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .regua {
+    height: 56px;
+    gap: 0.3rem;
+  }
+}

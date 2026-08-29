@@ -15,6 +15,7 @@ import {
 import {
   formatarData,
   formatarDinheiro,
+  formatarMes,
   hojeISO,
   rotuloDaAcaoDeStatus,
   rotuloDaParcela,
@@ -48,6 +49,17 @@ type ItemDaLista =
   | { chave: string; data: string; especie: 'lancamento'; transacao: Transacao }
   | { chave: string; data: string; especie: 'previsao'; previsao: RecorrenciaPrevista };
 
+/**
+ * O que o formulário está registrando. "SOBRA" não é um tipo de transação no
+ * banco — é um GANHO com a marca de sobra —, mas na tela ele é uma escolha
+ * irmã de gasto e ganho, porque para quem lança é outra coisa que se faz.
+ */
+type TipoDoFormulario = TipoTransacao | 'SOBRA';
+
+/** Descrição e categoria de uma sobra, para não pedi-las a quem lança. */
+const DESCRICAO_DA_SOBRA = 'Sobra do mês anterior';
+const CATEGORIA_DA_SOBRA = 'Sobra';
+
 interface Props {
   /** Mês em foco, escolhido na trilha do topo. Formato "AAAA-MM". */
   mes: string;
@@ -70,7 +82,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   const [data, setData] = useState(hojeISO());
   const [valor, setValor] = useState('');
   const [categoria, setCategoria] = useState('');
-  const [tipo, setTipo] = useState<TipoTransacao>('GASTO');
+  const [tipo, setTipo] = useState<TipoDoFormulario>('GASTO');
   // Nasce pendente: o uso comum é planejar o mês e ir marcando o que saiu.
   const [status, setStatus] = useState<StatusTransacao>('PENDENTE');
   const [formaDePagamento, setFormaDePagamento] = useState('');
@@ -87,7 +99,12 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   // (por exemplo, logo depois de criar um lançamento).
   const [versaoDaLista, setVersaoDaLista] = useState(0);
 
-  const quantidadeDeParcelas = Number(parcelas) || 1;
+  const ehSobra = tipo === 'SOBRA';
+
+  // Uma sobra do mês passado é um valor único e já realizado: parcelar,
+  // classificar como fixo/variável ou dizer a forma de pagamento não se
+  // aplicam a ela.
+  const quantidadeDeParcelas = ehSobra ? 1 : Number(parcelas) || 1;
   const ehParcelado = quantidadeDeParcelas > 1;
 
   // Uma conta prevista é, por definição, uma conta que ainda não aconteceu.
@@ -152,16 +169,27 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
         throw new Error('Informe um valor maior que zero.');
       }
 
+      /*
+       * Numa sobra, o formulário pede só o valor. O resto vem daqui:
+       * - descrição e categoria são fixas, porque só existe uma coisa que
+       *   um lançamento desses pode ser;
+       * - a data é o dia 1 do mês aberto na trilha, que é o mês a que a
+       *   sobra pertence;
+       * - ela nasce concluída, porque é dinheiro que já está na conta.
+       */
+      const dataUsada = ehSobra ? `${mes}-01` : data;
+
       const criadas = await criarTransacao({
-        data,
-        descricao,
+        data: dataUsada,
+        descricao: ehSobra ? DESCRICAO_DA_SOBRA : descricao,
         valor: valorNumerico,
-        categoria,
-        tipo,
-        status,
-        formaDePagamento: formaDePagamento || undefined,
-        classificacao: tipo === 'GASTO' ? classificacao : '',
+        categoria: ehSobra ? CATEGORIA_DA_SOBRA : categoria,
+        tipo: ehSobra ? 'GANHO' : tipo,
+        status: ehSobra ? 'CONCLUIDA' : status,
+        formaDePagamento: ehSobra ? undefined : formaDePagamento || undefined,
+        classificacao: !ehSobra && tipo === 'GASTO' ? classificacao : '',
         parcelas: quantidadeDeParcelas,
+        ehSobraDoMesAnterior: ehSobra,
       });
 
       if (criadas.length > 1) {
@@ -182,7 +210,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
       // Se o lançamento caiu fora do mês em foco, mostra o mês dele para que
       // ele não "suma" logo depois de ser criado.
-      const mesDoLancamento = data.slice(0, 7);
+      const mesDoLancamento = dataUsada.slice(0, 7);
       if (mesDoLancamento !== mes) {
         setCarregando(true);
         aoTrocarMes(mesDoLancamento);
@@ -289,28 +317,32 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
         <h2>Novo lançamento</h2>
 
         <form onSubmit={aoEnviar}>
-          <div className="linha-de-campos">
-            <label className="campo campo--largo">
-              <span>Descrição</span>
-              <input
-                type="text"
-                placeholder="Ex: Netflix"
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                required
-              />
-            </label>
+          {/* Numa sobra, descrição, data e categoria são sempre as mesmas, e
+              o app as preenche. Pedi-las seria trabalho sem escolha. */}
+          {!ehSobra && (
+            <div className="linha-de-campos">
+              <label className="campo campo--largo">
+                <span>Descrição</span>
+                <input
+                  type="text"
+                  placeholder="Ex: Netflix"
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  required
+                />
+              </label>
 
-            <label className="campo">
-              <span>Data</span>
-              <input
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                required
-              />
-            </label>
-          </div>
+              <label className="campo">
+                <span>Data</span>
+                <input
+                  type="date"
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                  required
+                />
+              </label>
+            </div>
+          )}
 
           <div className="linha-de-campos">
             <label className="campo">
@@ -325,88 +357,110 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
               />
             </label>
 
-            <label className="campo">
-              <span>Categoria</span>
-              <input
-                type="text"
-                list="categorias-sugeridas"
-                placeholder="Ex: Lazer"
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-                required
-              />
-              <datalist id="categorias-sugeridas">
-                {CATEGORIAS_SUGERIDAS.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </label>
+            {!ehSobra && (
+              <label className="campo">
+                <span>Categoria</span>
+                <input
+                  type="text"
+                  list="categorias-sugeridas"
+                  placeholder="Ex: Lazer"
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  required
+                />
+                <datalist id="categorias-sugeridas">
+                  {CATEGORIAS_SUGERIDAS.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </label>
+            )}
 
             <label className="campo">
               <span>Tipo</span>
-              <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoTransacao)}>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as TipoDoFormulario)}
+              >
                 <option value="GASTO">Gasto</option>
                 <option value="GANHO">Ganho</option>
+                <option value="SOBRA">Sobra do mês anterior</option>
               </select>
             </label>
           </div>
 
-          <div className="linha-de-campos">
-            <label className="campo">
-              <span>Situação</span>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as StatusTransacao)}
-              >
-                <option value="PENDENTE">{rotuloDoStatus(tipo, 'PENDENTE')}</option>
-                <option value="CONCLUIDA">{rotuloDoStatus(tipo, 'CONCLUIDA')}</option>
-              </select>
-            </label>
+          {ehSobra && (
+            <p className="explicacao">
+              O dinheiro que você já tinha em conta quando {formatarMes(mes)}{' '}
+              começou. Ele aparece na linha <strong>Sobra anterior</strong> do
+              balanço e fica fora das entradas, do gráfico de categorias e das
+              faturas — não é receita do mês, é o ponto de partida dele. Para
+              lançar em outro mês, troque o mês na barra do topo.
+            </p>
+          )}
 
-            <label className="campo">
-              <span>Forma de pagamento</span>
-              <input
-                type="text"
-                list="formas-sugeridas"
-                placeholder="Ex: Cartão Nubank"
-                value={formaDePagamento}
-                onChange={(e) => setFormaDePagamento(e.target.value)}
-              />
-              <datalist id="formas-sugeridas">
-                {FORMAS_SUGERIDAS.map((f) => (
-                  <option key={f} value={f} />
-                ))}
-              </datalist>
-            </label>
+          {/* Forma de pagamento, fixo/variável e parcelas não se aplicam a um
+              saldo que veio do mês passado, então somem quando ele é marcado. */}
+          {!ehSobra && (
+            <div className="linha-de-campos">
+              <label className="campo">
+                <span>Situação</span>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as StatusTransacao)}
+                >
+                  <option value="PENDENTE">{rotuloDoStatus(tipo, 'PENDENTE')}</option>
+                  <option value="CONCLUIDA">{rotuloDoStatus(tipo, 'CONCLUIDA')}</option>
+                </select>
+              </label>
 
-            {/* Fixo/variável e parcelamento só fazem sentido para gasto. */}
-            {tipo === 'GASTO' && (
-              <>
-                <label className="campo">
-                  <span>Fixo ou variável</span>
-                  <select
-                    value={classificacao}
-                    onChange={(e) => setClassificacao(e.target.value as ClassificacaoGasto | '')}
-                  >
-                    <option value="">Não classificar</option>
-                    <option value="FIXO">Fixo</option>
-                    <option value="VARIAVEL">Variável</option>
-                  </select>
-                </label>
+              <label className="campo">
+                <span>Forma de pagamento</span>
+                <input
+                  type="text"
+                  list="formas-sugeridas"
+                  placeholder="Ex: Cartão Nubank"
+                  value={formaDePagamento}
+                  onChange={(e) => setFormaDePagamento(e.target.value)}
+                />
+                <datalist id="formas-sugeridas">
+                  {FORMAS_SUGERIDAS.map((f) => (
+                    <option key={f} value={f} />
+                  ))}
+                </datalist>
+              </label>
 
-                <label className="campo">
-                  <span>Parcelas</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={parcelas}
-                    onChange={(e) => setParcelas(e.target.value)}
-                  />
-                </label>
-              </>
-            )}
-          </div>
+              {/* Fixo/variável e parcelamento só fazem sentido para gasto. */}
+              {tipo === 'GASTO' && (
+                <>
+                  <label className="campo">
+                    <span>Fixo ou variável</span>
+                    <select
+                      value={classificacao}
+                      onChange={(e) =>
+                        setClassificacao(e.target.value as ClassificacaoGasto | '')
+                      }
+                    >
+                      <option value="">Não classificar</option>
+                      <option value="FIXO">Fixo</option>
+                      <option value="VARIAVEL">Variável</option>
+                    </select>
+                  </label>
+
+                  <label className="campo">
+                    <span>Parcelas</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={parcelas}
+                      onChange={(e) => setParcelas(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+          )}
 
           {ehParcelado && (
             <p className="explicacao">
@@ -538,6 +592,14 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                       <td>
                         {t.descricao}
                         {parcela && <span className="marcador"> {parcela}</span>}
+                        {t.ehSobraDoMesAnterior && (
+                          <span
+                            className="etiqueta"
+                            title="Conta como sobra do mês anterior, não como entrada do mês"
+                          >
+                            Sobra anterior
+                          </span>
+                        )}
                         {t.classificacao && (
                           <span className="etiqueta">
                             {t.classificacao === 'FIXO' ? 'Fixo' : 'Variável'}
