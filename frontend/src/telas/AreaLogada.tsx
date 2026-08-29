@@ -2,15 +2,19 @@ import { useState } from 'react';
 import type { Usuario } from '../api.ts';
 import Dashboard from './Dashboard.tsx';
 import Lancamentos from './Lancamentos.tsx';
+import Recorrencias from './Recorrencias.tsx';
+import Projecao from './Projecao.tsx';
 import Inicio from './Inicio.tsx';
 
-// Navegação simples por estado. Quando houver mais telas (Projeção,
-// Investimentos), vale trocar por um roteador de verdade, com URL própria.
-type Aba = 'dashboard' | 'lancamentos' | 'inicio';
+// Navegação simples por estado. Quando entrar Investimentos vale trocar por
+// um roteador de verdade, com URL própria para cada aba.
+type Aba = 'dashboard' | 'lancamentos' | 'projecao' | 'recorrencias' | 'inicio';
 
 const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'dashboard', rotulo: 'Dashboard' },
   { id: 'lancamentos', rotulo: 'Lançamentos' },
+  { id: 'projecao', rotulo: 'Projeção' },
+  { id: 'recorrencias', rotulo: 'Recorrências' },
   { id: 'inicio', rotulo: 'Início' },
 ];
 
@@ -53,6 +57,8 @@ function AreaLogada({ usuario, aoSair }: Props) {
 
       {aba === 'dashboard' && <Dashboard />}
       {aba === 'lancamentos' && <Lancamentos />}
+      {aba === 'projecao' && <Projecao />}
+      {aba === 'recorrencias' && <Recorrencias />}
       {aba === 'inicio' && <Inicio />}
     </main>
   );

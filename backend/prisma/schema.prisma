@@ -17,7 +17,8 @@ model Usuario {
   senhaHash String   @map("senha_hash")
   criadoEm  DateTime @default(now()) @map("criado_em")
 
-  transacoes Transacao[]
+  transacoes   Transacao[]
+  recorrencias Recorrencia[]
 
   @@map("usuarios")
 }
@@ -30,12 +31,38 @@ model Transacao {
   /// Só o dia, sem hora: evita que fuso horário jogue o lançamento para outro mês.
   data      DateTime @db.Date
 
+  /// O que foi (Netflix, Cabelo). A categoria diz de que grupo é; a
+  /// descrição diz qual item. Sem ela, distinguir Netflix de Spotify exigiria
+  /// inventar uma categoria para cada um.
+  descricao String
+
   /// Decimal (NUMERIC no Postgres) faz contas exatas com centavos.
   /// Sempre positivo — quem diz se soma ou subtrai é o campo `tipo`.
   valor     Decimal  @db.Decimal(12, 2)
 
   categoria String
   tipo      TipoTransacao
+
+  /// Se o dinheiro já se moveu ou ainda vai se mover. É o que separa
+  /// "quanto já gastei" de "quanto vou gastar" no Dashboard.
+  status    StatusTransacao @default(CONCLUIDA)
+
+  /// Pix, Cartão Nubank, Dinheiro… Texto livre, e não lista fixa: os cartões
+  /// de cada pessoa são outros. Vazio quando não se aplica.
+  formaDePagamento String? @map("forma_de_pagamento")
+
+  /// Gasto fixo (repete todo mês) ou variável. Só faz sentido para GASTO.
+  classificacao ClassificacaoGasto?
+
+  /// Parcelamento: "3/12" vira parcelaAtual 3 e parcelasTotais 12.
+  /// Nulos quando a compra foi à vista.
+  parcelaAtual   Int? @map("parcela_atual")
+  parcelasTotais Int? @map("parcelas_totais")
+
+  /// Liga entre si as parcelas da MESMA compra, para dar para apagar as 12 de
+  /// uma vez em vez de caçar uma por uma.
+  grupoDeParcelas String? @map("grupo_de_parcelas") @db.Uuid
+
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   // Apagar um usuário apaga as transações dele junto.
@@ -43,7 +70,59 @@ model Transacao {
 
   // Toda consulta é "transações deste usuário, neste período".
   @@index([usuarioId, data])
+  // Apagar ou listar uma compra parcelada inteira.
+  @@index([grupoDeParcelas])
   @@map("transacoes")
+}
+
+/// Uma conta que se repete todo mês (aluguel, assinatura, salário).
+/// Não vira lançamento sozinha: serve para o motor de projeção estimar
+/// os meses que ainda não aconteceram.
+model Recorrencia {
+  id        Int      @id @default(autoincrement())
+  usuarioId Int      @map("usuario_id")
+
+  descricao String
+  valor     Decimal  @db.Decimal(12, 2)
+  categoria String
+  tipo      TipoTransacao
+
+  /// Mesmos campos da transação: quando a recorrência virar lançamento, ela
+  /// já traz de onde sai o dinheiro e se é gasto fixo.
+  formaDePagamento String? @map("forma_de_pagamento")
+  classificacao    ClassificacaoGasto?
+
+  /// 1 a 31. Não muda o saldo do mês — a recorrência conta uma vez, caindo
+  /// no dia que cair. Serve para mostrar a data prevista; num mês mais curto
+  /// que o dia escolhido, a projeção exibe o último dia do mês.
+  diaDoMes  Int      @map("dia_do_mes")
+
+  /// Desligar em vez de apagar: uma assinatura cancelada some da projeção
+  /// mas continua no histórico.
+  ativa     Boolean  @default(true)
+
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  // A projeção sempre pede "as recorrências ativas deste usuário".
+  @@index([usuarioId, ativa])
+  @@map("recorrencias")
+}
+
+/// Se o dinheiro já se moveu. Um valor só serve para gasto e ganho: o rótulo
+/// na tela é que muda — "A pagar/Pago" para gasto, "A receber/Recebido" para
+/// ganho. Dois enums separados diriam a mesma coisa duas vezes.
+enum StatusTransacao {
+  PENDENTE
+  CONCLUIDA
+}
+
+/// Gasto que se repete igual todo mês (aluguel, assinatura) ou que varia
+/// (mercado, lazer). Serve para responder "quanto do meu mês já está preso?".
+enum ClassificacaoGasto {
+  FIXO
+  VARIAVEL
 }
 
 enum TipoTransacao {

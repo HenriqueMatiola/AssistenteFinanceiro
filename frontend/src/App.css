@@ -346,3 +346,109 @@ form button {
     transition: none;
   }
 }
+
+/* --- Recorrências e Projeção --- */
+
+/* Texto que explica o que a tela faz. Menor e mais apagado que o conteúdo:
+   quem já entendeu passa direto, quem chegou agora tem onde se apoiar. */
+.explicacao {
+  font-size: 0.9rem;
+  opacity: 0.75;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+/* Botões de linha de tabela: menores que o botão principal, para não competir
+   com ele nem esticar a altura da linha. */
+.acoes {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.botao--discreto {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+/* Recorrência desligada: continua legível, mas claramente fora do jogo. */
+.linha--desligada {
+  opacity: 0.45;
+}
+
+.linha--desligada td {
+  text-decoration: line-through;
+}
+
+/* A célula de ações não deve ficar riscada: os botões continuam valendo. */
+.linha--desligada .acoes {
+  text-decoration: none;
+}
+
+.linha--desligada .acoes button {
+  text-decoration: none;
+}
+
+/* Aviso de que o mês tem lançamento pontual além das recorrências. */
+.marcador {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* --- Lançamentos completos --- */
+
+/* Campo que precisa de mais espaço que os vizinhos (a descrição). */
+.campo--largo {
+  flex: 2 1 260px;
+}
+
+/* Aviso neutro: não é erro, é uma confirmação do que acabou de acontecer
+   ("12 parcelas criadas"). */
+.mensagem-aviso {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  background: rgba(128, 128, 128, 0.08);
+  font-size: 0.9rem;
+}
+
+/* Tabelas ganharam colunas e não cabem mais em tela estreita. Rolar só a
+   tabela — e não a página inteira de lado — mantém o resto no lugar. */
+.tabela-rolavel {
+  overflow-x: auto;
+}
+
+/* Etiqueta discreta ao lado do nome: "Fixo", "Variável". */
+.etiqueta {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 5px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  font-size: 0.72rem;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+/* Situação do lançamento. O pendente é o que exige ação, então é o único que
+   recebe cor — se os dois estados fossem coloridos, nenhum se destacaria. */
+.situacao {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.situacao--pendente {
+  opacity: 1;
+  color: #b45309;
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .situacao--pendente {
+    /* O âmbar escuro some contra o fundo preto; este clareia o suficiente
+       para manter o contraste sem virar amarelo puro. */
+    color: #f0a742;
+  }
+}

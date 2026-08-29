@@ -9,11 +9,12 @@
  * Montado atrás de `exigirLogin`, então `req.usuarioId` sempre existe e toda
  * consulta filtra por ele — é isso que mantém os dados de cada um separados.
  */
-import { Router, type Response } from 'express';
+import { Router } from 'express';
 import { prisma } from '../prisma.ts';
 import { idDoUsuarioLogado } from '../auth.ts';
-import { ErroDeValidacao, intervaloDoMes, mesAtualUTC } from '../validacao.ts';
-import { TipoTransacao } from '../generated/prisma/enums.ts';
+import { intervaloDoMes, mesAtualUTC } from '../validacao.ts';
+import { responderErro } from '../respostas.ts';
+import { StatusTransacao, TipoTransacao } from '../generated/prisma/enums.ts';
 
 export const rotasDeResumo = Router();
 
@@ -27,8 +28,8 @@ function somaParaNumero(soma: { toNumber(): number } | null | undefined): number
 /**
  * Corta a sujeira do ponto flutuante depois de uma conta com dinheiro.
  * Em JavaScript, `0.1 + 0.2` dá 0.30000000000000004: `number` é binário e não
- * representa centavos exatamente. As somas vêm exatas do banco; só a subtração
- * do saldo acontece aqui, e é ela que precisa deste arredondamento.
+ * representa centavos exatamente. As somas vêm exatas do banco; só as
+ * subtrações acontecem aqui, e são elas que precisam deste arredondamento.
  */
 function arredondarCentavos(valor: number): number {
   return Math.round(valor * 100) / 100;
@@ -39,53 +40,93 @@ function mesPedido(valorBruto: unknown): string {
   return typeof valorBruto === 'string' && valorBruto !== '' ? valorBruto : mesAtualUTC();
 }
 
-/** Traduz a exceção em resposta HTTP: 400 se foi culpa do pedido, 500 se foi nossa. */
-function responderErro(res: Response, erro: unknown, contexto: string): void {
-  if (erro instanceof ErroDeValidacao) {
-    res.status(400).json({ erro: erro.message });
-    return;
-  }
-  console.error(`${contexto}:`, erro);
-  res.status(500).json({ erro: `Erro interno ao ${contexto}.` });
+/** Uma linha do groupBy: tipo (e talvez status) com a soma pronta. */
+interface LinhaAgrupada {
+  tipo: TipoTransacao;
+  status?: StatusTransacao;
+  _sum: { valor: { toNumber(): number } | null };
+}
+
+/** Soma as linhas de um tipo, opcionalmente filtrando por status. */
+function totalDe(
+  linhas: LinhaAgrupada[],
+  tipo: TipoTransacao,
+  status?: StatusTransacao
+): number {
+  return linhas
+    .filter((linha) => linha.tipo === tipo && (status === undefined || linha.status === status))
+    .reduce((soma, linha) => soma + somaParaNumero(linha._sum.valor), 0);
 }
 
 // --- Rotas ------------------------------------------------------------------
 
 /**
  * GET /api/resumo?mes=2026-08
- * Totais do mês: quanto entrou, quanto saiu e o que sobrou.
+ *
+ * Totais do mês, no mesmo formato de uma planilha de balanço:
+ *   sobra do mês anterior + entradas − saídas = disponível
+ *
+ * Entradas e saídas contam TUDO que está lançado no mês, pago ou ainda a
+ * pagar. É o que responde "como este mês fecha se tudo acontecer como
+ * planejado" — a pergunta que se faz olhando o mês inteiro. A quebra por
+ * status vai junto, em `realizado` e `pendente`, para dar para ver quanto
+ * disso já saiu de fato da conta.
  */
 rotasDeResumo.get('/', async (req, res) => {
   try {
+    const usuarioId = idDoUsuarioLogado(req);
     const mes = mesPedido(req.query['mes']);
+    const intervalo = intervaloDoMes(mes);
 
-    // Uma consulta só, agrupada por tipo: o banco devolve no máximo duas
-    // linhas (GANHO e GASTO), cada uma já com a soma do mês.
-    const porTipo = await prisma.transacao.groupBy({
-      by: ['tipo'],
-      where: {
-        usuarioId: idDoUsuarioLogado(req),
-        data: intervaloDoMes(mes),
-      },
-      _sum: { valor: true },
-    });
+    // As duas consultas não dependem uma da outra: vão juntas.
+    const [doMes, dosMesesAnteriores] = await Promise.all([
+      // Agrupado também por status, para separar o que já aconteceu do que
+      // ainda vai acontecer sem precisar de uma segunda consulta.
+      prisma.transacao.groupBy({
+        by: ['tipo', 'status'],
+        where: { usuarioId, data: intervalo },
+        _sum: { valor: true },
+      }),
 
-    // `find` devolve undefined quando o mês não teve nenhum ganho (ou nenhum
-    // gasto); o somaParaNumero transforma essa ausência em 0.
-    const entradas = somaParaNumero(
-      porTipo.find((linha) => linha.tipo === TipoTransacao.GANHO)?._sum.valor
+      // Tudo que veio antes deste mês. A diferença é a "sobra": o que sobrou
+      // (ou faltou) de toda a história até aqui.
+      prisma.transacao.groupBy({
+        by: ['tipo'],
+        where: { usuarioId, data: { lt: intervalo.gte } },
+        _sum: { valor: true },
+      }),
+    ]);
+
+    const entradas = totalDe(doMes, TipoTransacao.GANHO);
+    const saidas = totalDe(doMes, TipoTransacao.GASTO);
+
+    const sobraDoMesAnterior = arredondarCentavos(
+      totalDe(dosMesesAnteriores, TipoTransacao.GANHO) -
+        totalDe(dosMesesAnteriores, TipoTransacao.GASTO)
     );
-    const saidas = somaParaNumero(
-      porTipo.find((linha) => linha.tipo === TipoTransacao.GASTO)?._sum.valor
-    );
+
+    const saldo = arredondarCentavos(entradas - saidas);
 
     res.json({
       mes,
+      sobraDoMesAnterior,
       entradas,
       saidas,
       // Negativo quando se gastou mais do que entrou — e é justamente esse o
       // número que o dashboard existe para mostrar.
-      saldo: arredondarCentavos(entradas - saidas),
+      saldo,
+      // O que efetivamente sobra na mão, arrastando o resultado dos meses
+      // anteriores: um mês positivo depois de três negativos não é folga.
+      disponivel: arredondarCentavos(sobraDoMesAnterior + saldo),
+
+      realizado: {
+        entradas: totalDe(doMes, TipoTransacao.GANHO, StatusTransacao.CONCLUIDA),
+        saidas: totalDe(doMes, TipoTransacao.GASTO, StatusTransacao.CONCLUIDA),
+      },
+      pendente: {
+        entradas: totalDe(doMes, TipoTransacao.GANHO, StatusTransacao.PENDENTE),
+        saidas: totalDe(doMes, TipoTransacao.GASTO, StatusTransacao.PENDENTE),
+      },
     });
   } catch (erro) {
     responderErro(res, erro, 'calcular o resumo do mês');
@@ -127,5 +168,65 @@ rotasDeResumo.get('/categorias', async (req, res) => {
     });
   } catch (erro) {
     responderErro(res, erro, 'agrupar os gastos por categoria');
+  }
+});
+
+/**
+ * GET /api/resumo/formas-de-pagamento?mes=2026-08
+ *
+ * Gastos do mês por forma de pagamento — na prática, quanto vem na fatura de
+ * cada cartão. Junto vai a quebra por status, porque numa fatura o que
+ * interessa é justamente o que ainda não foi pago.
+ *
+ * Lançamentos sem forma de pagamento informada entram como "Não informado":
+ * some-los da lista faria o total não bater com as saídas do mês.
+ */
+rotasDeResumo.get('/formas-de-pagamento', async (req, res) => {
+  try {
+    const mes = mesPedido(req.query['mes']);
+
+    const porForma = await prisma.transacao.groupBy({
+      by: ['formaDePagamento', 'status'],
+      where: {
+        usuarioId: idDoUsuarioLogado(req),
+        tipo: TipoTransacao.GASTO,
+        data: intervaloDoMes(mes),
+      },
+      _sum: { valor: true },
+    });
+
+    // O groupBy devolve uma linha por (forma, status); aqui as duas viram uma
+    // linha só por forma, com o pendente destacado.
+    const acumulado = new Map<string, { total: number; pendente: number }>();
+
+    for (const linha of porForma) {
+      const forma = linha.formaDePagamento ?? 'Não informado';
+      const atual = acumulado.get(forma) ?? { total: 0, pendente: 0 };
+      const valor = somaParaNumero(linha._sum.valor);
+
+      atual.total += valor;
+      if (linha.status === StatusTransacao.PENDENTE) {
+        atual.pendente += valor;
+      }
+
+      acumulado.set(forma, atual);
+    }
+
+    const formas = [...acumulado.entries()]
+      .map(([forma, totais]) => ({
+        forma,
+        total: arredondarCentavos(totais.total),
+        pendente: arredondarCentavos(totais.pendente),
+      }))
+      // Maior fatura primeiro: é a que decide o mês.
+      .sort((a, b) => b.total - a.total);
+
+    res.json({
+      mes,
+      formas,
+      total: arredondarCentavos(formas.reduce((soma, f) => soma + f.total, 0)),
+    });
+  } catch (erro) {
+    responderErro(res, erro, 'agrupar os gastos por forma de pagamento');
   }
 });

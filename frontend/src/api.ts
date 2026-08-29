@@ -96,32 +96,57 @@ export async function buscarUsuarioLogado(): Promise<Usuario> {
 
 export type TipoTransacao = 'GASTO' | 'GANHO';
 
+/** PENDENTE = "A pagar"/"A receber". CONCLUIDA = o dinheiro já se moveu. */
+export type StatusTransacao = 'PENDENTE' | 'CONCLUIDA';
+
+/** Gasto que repete igual todo mês (FIXO) ou que varia (VARIAVEL). */
+export type ClassificacaoGasto = 'FIXO' | 'VARIAVEL';
+
 export interface Transacao {
   id: number;
   /** Sempre no formato "AAAA-MM-DD", sem hora e sem fuso. */
   data: string;
+  /** O que foi: "Netflix", "Cabelo". A categoria diz de que grupo é. */
+  descricao: string;
   valor: number;
   categoria: string;
   tipo: TipoTransacao;
+  status: StatusTransacao;
+  formaDePagamento: string | null;
+  classificacao: ClassificacaoGasto | null;
+  /** Nulos quando a compra foi à vista. */
+  parcelaAtual: number | null;
+  parcelasTotais: number | null;
+  /** Liga entre si as parcelas da mesma compra. */
+  grupoDeParcelas: string | null;
 }
 
 export interface NovaTransacao {
   data: string;
+  descricao: string;
+  /** Com parcelamento, é o valor de CADA parcela — não o total da compra. */
   valor: number;
   categoria: string;
   tipo: TipoTransacao;
+  status: StatusTransacao;
+  formaDePagamento?: string;
+  classificacao?: ClassificacaoGasto | '';
+  /** 1 (ou ausente) = à vista. Acima disso, o backend cria uma por mês. */
+  parcelas?: number;
 }
 
 export interface FiltroTransacoes {
   /** Formato "AAAA-MM". */
   mes?: string;
   tipo?: TipoTransacao | '';
+  status?: StatusTransacao | '';
 }
 
 export async function listarTransacoes(filtro: FiltroTransacoes = {}): Promise<Transacao[]> {
   const parametros = new URLSearchParams();
   if (filtro.mes) parametros.set('mes', filtro.mes);
   if (filtro.tipo) parametros.set('tipo', filtro.tipo);
+  if (filtro.status) parametros.set('status', filtro.status);
 
   const consulta = parametros.toString();
   const resposta = await chamar<{ transacoes: Transacao[] }>(
@@ -130,23 +155,64 @@ export async function listarTransacoes(filtro: FiltroTransacoes = {}): Promise<T
   return resposta.transacoes;
 }
 
-export async function criarTransacao(nova: NovaTransacao): Promise<Transacao> {
-  const resposta = await chamar<{ transacao: Transacao }>('/api/transacoes', {
+/**
+ * Cria um lançamento. Devolve uma LISTA porque um lançamento parcelado vira
+ * várias transações de uma vez — uma por mês.
+ */
+export async function criarTransacao(nova: NovaTransacao): Promise<Transacao[]> {
+  const resposta = await chamar<{ transacoes: Transacao[] }>('/api/transacoes', {
     method: 'POST',
     body: JSON.stringify(nova),
+  });
+  return resposta.transacoes;
+}
+
+/** Marca como pago/recebido, ou volta para pendente. */
+export async function alterarStatusTransacao(
+  id: number,
+  status: StatusTransacao
+): Promise<Transacao> {
+  const resposta = await chamar<{ transacao: Transacao }>(`/api/transacoes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
   });
   return resposta.transacao;
 }
 
+/**
+ * Exclui um lançamento. Com `todasAsParcelas`, apaga a compra parcelada
+ * inteira em vez de só a parcela apontada.
+ */
+export async function excluirTransacao(id: number, todasAsParcelas = false): Promise<number> {
+  const resposta = await chamar<{ apagados: number }>(
+    `/api/transacoes/${id}${todasAsParcelas ? '?todasAsParcelas=true' : ''}`,
+    { method: 'DELETE' }
+  );
+  return resposta.apagados;
+}
+
 // --- Resumo do mês (Dashboard) ----------------------------------------------
+
+export interface TotaisPorStatus {
+  entradas: number;
+  saidas: number;
+}
 
 export interface ResumoDoMes {
   /** Formato "AAAA-MM". */
   mes: string;
+  /** Resultado acumulado de tudo que veio antes deste mês. */
+  sobraDoMesAnterior: number;
   entradas: number;
   saidas: number;
-  /** Entradas menos saídas. Negativo quando se gastou mais do que entrou. */
+  /** Entradas menos saídas do mês. Negativo quando se gastou mais do que entrou. */
   saldo: number;
+  /** Sobra do mês anterior mais o saldo do mês: o que de fato resta. */
+  disponivel: number;
+  /** O que já se moveu de verdade. */
+  realizado: TotaisPorStatus;
+  /** O que ainda está "a pagar" / "a receber". */
+  pendente: TotaisPorStatus;
 }
 
 export interface GastoPorCategoria {
@@ -161,10 +227,133 @@ export interface GastosPorCategoria {
   total: number;
 }
 
+export interface GastoPorForma {
+  /** "Cartão Nubank", "Pix"… ou "Não informado". */
+  forma: string;
+  total: number;
+  /** Quanto desse total ainda não foi pago. */
+  pendente: number;
+}
+
+export interface GastosPorFormaDePagamento {
+  mes: string;
+  /** Já vem ordenado da maior fatura para a menor. */
+  formas: GastoPorForma[];
+  total: number;
+}
+
 export async function buscarResumo(mes: string): Promise<ResumoDoMes> {
   return chamar(`/api/resumo?mes=${encodeURIComponent(mes)}`);
 }
 
 export async function buscarGastosPorCategoria(mes: string): Promise<GastosPorCategoria> {
   return chamar(`/api/resumo/categorias?mes=${encodeURIComponent(mes)}`);
+}
+
+export async function buscarGastosPorFormaDePagamento(
+  mes: string
+): Promise<GastosPorFormaDePagamento> {
+  return chamar(`/api/resumo/formas-de-pagamento?mes=${encodeURIComponent(mes)}`);
+}
+
+// --- Recorrências -----------------------------------------------------------
+
+export interface Recorrencia {
+  id: number;
+  descricao: string;
+  valor: number;
+  categoria: string;
+  tipo: TipoTransacao;
+  formaDePagamento: string | null;
+  classificacao: ClassificacaoGasto | null;
+  /** 1 a 31. Em mês mais curto, a projeção mostra o último dia. */
+  diaDoMes: number;
+  /** Desligada não conta na projeção, mas continua na lista. */
+  ativa: boolean;
+}
+
+export interface NovaRecorrencia {
+  descricao: string;
+  valor: number;
+  categoria: string;
+  tipo: TipoTransacao;
+  formaDePagamento?: string;
+  classificacao?: ClassificacaoGasto | '';
+  diaDoMes: number;
+}
+
+export async function listarRecorrencias(): Promise<Recorrencia[]> {
+  const resposta = await chamar<{ recorrencias: Recorrencia[] }>('/api/recorrencias');
+  return resposta.recorrencias;
+}
+
+export async function criarRecorrencia(nova: NovaRecorrencia): Promise<Recorrencia> {
+  const resposta = await chamar<{ recorrencia: Recorrencia }>('/api/recorrencias', {
+    method: 'POST',
+    body: JSON.stringify(nova),
+  });
+  return resposta.recorrencia;
+}
+
+/** Liga ou desliga a recorrência sem apagá-la. */
+export async function alternarRecorrencia(id: number, ativa: boolean): Promise<Recorrencia> {
+  const resposta = await chamar<{ recorrencia: Recorrencia }>(`/api/recorrencias/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ativa }),
+  });
+  return resposta.recorrencia;
+}
+
+export async function excluirRecorrencia(id: number): Promise<void> {
+  await chamar(`/api/recorrencias/${id}`, { method: 'DELETE' });
+}
+
+// --- Projeção ---------------------------------------------------------------
+
+/** Uma recorrência já posicionada num mês da projeção. */
+export interface ItemProjetado {
+  id: number;
+  descricao: string;
+  categoria: string;
+  valor: number;
+  tipo: TipoTransacao;
+  /** Data prevista "AAAA-MM-DD", já ajustada em meses mais curtos. */
+  data: string;
+}
+
+export interface OrigemDoTotal {
+  entradas: number;
+  saidas: number;
+}
+
+export interface MesProjetado {
+  /** Formato "AAAA-MM". */
+  mes: string;
+  entradas: number;
+  saidas: number;
+  saldo: number;
+  /** De onde veio cada parte do total — útil para conferir um mês estranho. */
+  deRecorrencias: OrigemDoTotal;
+  deLancamentos: OrigemDoTotal;
+  /** Saldo deste mês somado ao de todos os meses anteriores da projeção. */
+  saldoAcumulado: number;
+  itens: ItemProjetado[];
+}
+
+export interface Projecao {
+  inicio: string;
+  meses: MesProjetado[];
+}
+
+/**
+ * Busca a projeção. Sem parâmetros, o backend devolve os 6 meses a partir do
+ * mês que vem — o mês corrente é assunto do Dashboard.
+ */
+export async function buscarProjecao(inicio?: string, meses?: number): Promise<Projecao> {
+  const parametros = new URLSearchParams();
+  if (inicio) parametros.set('inicio', inicio);
+  if (meses) parametros.set('meses', String(meses));
+
+  const consulta = parametros.toString();
+  return chamar(`/api/projecao${consulta ? `?${consulta}` : ''}`);
 }

@@ -41,3 +41,43 @@ const formatadorDeDinheiro = new Intl.NumberFormat('pt-BR', {
 export function formatarDinheiro(valor: number): string {
   return formatadorDeDinheiro.format(valor);
 }
+
+// --- Rótulos ----------------------------------------------------------------
+
+/**
+ * O mesmo status muda de nome conforme o tipo: dinheiro que sai está "A pagar",
+ * dinheiro que entra está "A receber". Guardar um valor só no banco e traduzir
+ * aqui evita ter dois campos dizendo a mesma coisa.
+ */
+export function rotuloDoStatus(
+  tipo: 'GASTO' | 'GANHO',
+  status: 'PENDENTE' | 'CONCLUIDA'
+): string {
+  if (tipo === 'GANHO') {
+    return status === 'PENDENTE' ? 'A receber' : 'Recebido';
+  }
+  return status === 'PENDENTE' ? 'A pagar' : 'Pago';
+}
+
+/** O que o botão de status faz quando clicado — o oposto do estado atual. */
+export function rotuloDaAcaoDeStatus(
+  tipo: 'GASTO' | 'GANHO',
+  status: 'PENDENTE' | 'CONCLUIDA'
+): string {
+  if (status === 'CONCLUIDA') {
+    return 'Reabrir';
+  }
+  return tipo === 'GANHO' ? 'Marcar recebido' : 'Marcar pago';
+}
+
+export function rotuloDaClassificacao(classificacao: 'FIXO' | 'VARIAVEL' | null): string {
+  if (classificacao === 'FIXO') return 'Fixo';
+  if (classificacao === 'VARIAVEL') return 'Variável';
+  return '';
+}
+
+/** "3/12" para uma compra parcelada; vazio quando foi à vista. */
+export function rotuloDaParcela(atual: number | null, totais: number | null): string {
+  if (atual === null || totais === null) return '';
+  return `${atual}/${totais}`;
+}

@@ -47,7 +47,27 @@ implementado até você aprovar este plano.
 - **Teste de validação (unitário)**: cenário com 1 recorrência + 1
   lançamento pontual futuro gera o saldo esperado
 
-## Etapa 5 — Investimentos
+## Etapa 5 — Lançamentos completos
+
+Acrescentada em 29/08/2026, depois de comparar o app com a planilha que o
+Henrique já usava no Notion. Sem estes campos o app registra menos coisa do
+que a planilha que ele veio substituir.
+
+- Campo **descrição** no lançamento ("Netflix", "Cabelo") — antes só havia
+  categoria, então não dava para distinguir dois itens do mesmo grupo
+- **Situação**: a pagar/pago, a receber/recebido — separa o previsto do
+  realizado
+- **Forma de pagamento** (Pix, cada cartão) e agrupamento por ela: é o que
+  responde "quanto vem na fatura deste cartão?"
+- **Fixo ou variável** no gasto
+- **Parcelamento**: lançar "12x de R$91,54" cria as 12 transações, uma por
+  mês, ligadas por um mesmo grupo — e a Projeção já as enxerga
+- Dashboard no formato de balanço: sobra do mês anterior + entradas − saídas
+  = disponível
+- **Teste de validação (unitário)**: as datas das parcelas respeitam meses
+  curtos (31/01 parcelado gera 28/02 e depois 31/03, sem arrastar o dia)
+
+## Etapa 6 — Investimentos
 - Criar tabela `investimentos` (usuário, ativo, data de compra,
   quantidade, valor pago)
 - Endpoint que busca cotação atual via API externa e calcula
@@ -56,7 +76,7 @@ implementado até você aprovar este plano.
 - **Teste de validação**: comprar um ativo, checar se lucro/prejuízo
   bate com a cotação retornada pela API
 
-## Etapa 6 — Polimento do MVP
+## Etapa 7 — Polimento do MVP
 - Tratamento de erros nas telas (ex: formulário inválido, API de
   cotação fora do ar)
 - Revisão visual dos gráficos e responsividade para celular

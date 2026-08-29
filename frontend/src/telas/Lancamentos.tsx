@@ -1,11 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  alterarStatusTransacao,
   criarTransacao,
+  excluirTransacao,
   listarTransacoes,
+  type ClassificacaoGasto,
+  type StatusTransacao,
   type TipoTransacao,
   type Transacao,
 } from '../api.ts';
-import { formatarData, formatarDinheiro, hojeISO, mesAtualISO } from '../formato.ts';
+import {
+  formatarData,
+  formatarDinheiro,
+  hojeISO,
+  mesAtualISO,
+  rotuloDaAcaoDeStatus,
+  rotuloDaParcela,
+  rotuloDoStatus,
+} from '../formato.ts';
 
 // Sugestões que aparecem ao clicar no campo de categoria. O usuário pode
 // digitar qualquer outra coisa — é só um atalho.
@@ -21,6 +33,10 @@ const CATEGORIAS_SUGERIDAS = [
   'Outros',
 ];
 
+// Mesma ideia para a forma de pagamento: sugestões comuns, campo livre.
+// Não é lista fixa porque os cartões de cada pessoa são outros.
+const FORMAS_SUGERIDAS = ['Pix', 'Dinheiro', 'Débito', 'Cartão de crédito', 'Boleto'];
+
 function Lancamentos() {
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -29,25 +45,36 @@ function Lancamentos() {
   // Filtros
   const [mes, setMes] = useState(mesAtualISO());
   const [tipoFiltrado, setTipoFiltrado] = useState<TipoTransacao | ''>('');
+  const [statusFiltrado, setStatusFiltrado] = useState<StatusTransacao | ''>('');
 
   // Formulário
+  const [descricao, setDescricao] = useState('');
   const [data, setData] = useState(hojeISO());
   const [valor, setValor] = useState('');
   const [categoria, setCategoria] = useState('');
   const [tipo, setTipo] = useState<TipoTransacao>('GASTO');
+  // Nasce pendente: o uso comum é planejar o mês e ir marcando o que saiu.
+  const [status, setStatus] = useState<StatusTransacao>('PENDENTE');
+  const [formaDePagamento, setFormaDePagamento] = useState('');
+  const [classificacao, setClassificacao] = useState<ClassificacaoGasto | ''>('');
+  const [parcelas, setParcelas] = useState('1');
   const [salvando, setSalvando] = useState(false);
   const [erroDoFormulario, setErroDoFormulario] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // Muda quando queremos recarregar sem que os filtros tenham mudado
   // (por exemplo, logo depois de criar um lançamento).
   const [versaoDaLista, setVersaoDaLista] = useState(0);
+
+  const quantidadeDeParcelas = Number(parcelas) || 1;
+  const ehParcelado = quantidadeDeParcelas > 1;
 
   useEffect(() => {
     // Se os filtros mudarem antes da resposta chegar, esta flag descarta o
     // resultado atrasado — senão uma busca antiga poderia sobrescrever a nova.
     let cancelado = false;
 
-    listarTransacoes({ mes, tipo: tipoFiltrado })
+    listarTransacoes({ mes, tipo: tipoFiltrado, status: statusFiltrado })
       .then((lista) => {
         if (cancelado) return;
         setTransacoes(lista);
@@ -64,7 +91,7 @@ function Lancamentos() {
     return () => {
       cancelado = true;
     };
-  }, [mes, tipoFiltrado, versaoDaLista]);
+  }, [mes, tipoFiltrado, statusFiltrado, versaoDaLista]);
 
   /** Troca um filtro já mostrando o aviso de carregamento. */
   function trocarMes(novoMes: string) {
@@ -77,6 +104,11 @@ function Lancamentos() {
     setTipoFiltrado(novoTipo);
   }
 
+  function trocarStatusFiltrado(novoStatus: StatusTransacao | '') {
+    setCarregando(true);
+    setStatusFiltrado(novoStatus);
+  }
+
   function recarregarLista() {
     setCarregando(true);
     setVersaoDaLista((n) => n + 1);
@@ -85,6 +117,7 @@ function Lancamentos() {
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     setErroDoFormulario(null);
+    setAviso(null);
     setSalvando(true);
 
     try {
@@ -96,17 +129,33 @@ function Lancamentos() {
         throw new Error('Informe um valor maior que zero.');
       }
 
-      await criarTransacao({
+      const criadas = await criarTransacao({
         data,
+        descricao,
         valor: valorNumerico,
         categoria,
         tipo,
+        status,
+        formaDePagamento: formaDePagamento || undefined,
+        classificacao: tipo === 'GASTO' ? classificacao : '',
+        parcelas: quantidadeDeParcelas,
       });
 
-      // Limpa só o que muda de um lançamento para o outro; data e tipo
-      // costumam se repetir quando se lança vários seguidos.
+      if (criadas.length > 1) {
+        // Só as parcelas do mês filtrado aparecem na lista; sem este aviso,
+        // parece que 11 delas se perderam.
+        setAviso(
+          `${criadas.length} parcelas criadas, de ${formatarData(criadas[0]?.data ?? data)} ` +
+            `a ${formatarData(criadas.at(-1)?.data ?? data)}.`
+        );
+      }
+
+      // Limpa só o que muda de um lançamento para o outro; data, tipo e forma
+      // de pagamento costumam se repetir quando se lança vários seguidos.
+      setDescricao('');
       setValor('');
       setCategoria('');
+      setParcelas('1');
 
       // Se o lançamento caiu fora do mês filtrado, mostra o mês dele para
       // que ele não "suma" logo depois de ser criado.
@@ -123,6 +172,49 @@ function Lancamentos() {
     }
   }
 
+  async function aoAlternarStatus(transacao: Transacao) {
+    setErroDaLista(null);
+    try {
+      await alterarStatusTransacao(
+        transacao.id,
+        transacao.status === 'CONCLUIDA' ? 'PENDENTE' : 'CONCLUIDA'
+      );
+      recarregarLista();
+    } catch (e) {
+      setErroDaLista(e instanceof Error ? e.message : 'Não consegui atualizar.');
+    }
+  }
+
+  async function aoExcluir(transacao: Transacao) {
+    const parcelado = transacao.grupoDeParcelas !== null;
+
+    // Numa compra parcelada, apagar só a parcela do mês quase nunca é o que se
+    // quer — mas apagar as 12 sem perguntar seria pior.
+    let todasAsParcelas = false;
+
+    if (parcelado) {
+      const rotulo = rotuloDaParcela(transacao.parcelaAtual, transacao.parcelasTotais);
+      todasAsParcelas = window.confirm(
+        `"${transacao.descricao}" é a parcela ${rotulo}.\n\n` +
+          'OK apaga a compra inteira (todas as parcelas).\n' +
+          'Cancelar apaga só esta parcela.'
+      );
+    } else if (!window.confirm(`Apagar "${transacao.descricao}"?`)) {
+      return;
+    }
+
+    setErroDaLista(null);
+    try {
+      const apagados = await excluirTransacao(transacao.id, todasAsParcelas);
+      if (apagados > 1) {
+        setAviso(`${apagados} parcelas apagadas.`);
+      }
+      recarregarLista();
+    } catch (e) {
+      setErroDaLista(e instanceof Error ? e.message : 'Não consegui excluir.');
+    }
+  }
+
   return (
     <>
       <section className="cartao">
@@ -130,6 +222,17 @@ function Lancamentos() {
 
         <form onSubmit={aoEnviar}>
           <div className="linha-de-campos">
+            <label className="campo campo--largo">
+              <span>Descrição</span>
+              <input
+                type="text"
+                placeholder="Ex: Netflix"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                required
+              />
+            </label>
+
             <label className="campo">
               <span>Data</span>
               <input
@@ -139,9 +242,11 @@ function Lancamentos() {
                 required
               />
             </label>
+          </div>
 
+          <div className="linha-de-campos">
             <label className="campo">
-              <span>Valor (R$)</span>
+              <span>{ehParcelado ? 'Valor da parcela (R$)' : 'Valor (R$)'}</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -151,15 +256,13 @@ function Lancamentos() {
                 required
               />
             </label>
-          </div>
 
-          <div className="linha-de-campos">
             <label className="campo">
               <span>Categoria</span>
               <input
                 type="text"
                 list="categorias-sugeridas"
-                placeholder="Ex: Mercado"
+                placeholder="Ex: Lazer"
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value)}
                 required
@@ -179,6 +282,72 @@ function Lancamentos() {
               </select>
             </label>
           </div>
+
+          <div className="linha-de-campos">
+            <label className="campo">
+              <span>Situação</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as StatusTransacao)}
+              >
+                <option value="PENDENTE">{rotuloDoStatus(tipo, 'PENDENTE')}</option>
+                <option value="CONCLUIDA">{rotuloDoStatus(tipo, 'CONCLUIDA')}</option>
+              </select>
+            </label>
+
+            <label className="campo">
+              <span>Forma de pagamento</span>
+              <input
+                type="text"
+                list="formas-sugeridas"
+                placeholder="Ex: Cartão Nubank"
+                value={formaDePagamento}
+                onChange={(e) => setFormaDePagamento(e.target.value)}
+              />
+              <datalist id="formas-sugeridas">
+                {FORMAS_SUGERIDAS.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            </label>
+
+            {/* Fixo/variável e parcelamento só fazem sentido para gasto. */}
+            {tipo === 'GASTO' && (
+              <>
+                <label className="campo">
+                  <span>Fixo ou variável</span>
+                  <select
+                    value={classificacao}
+                    onChange={(e) => setClassificacao(e.target.value as ClassificacaoGasto | '')}
+                  >
+                    <option value="">Não classificar</option>
+                    <option value="FIXO">Fixo</option>
+                    <option value="VARIAVEL">Variável</option>
+                  </select>
+                </label>
+
+                <label className="campo">
+                  <span>Parcelas</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={parcelas}
+                    onChange={(e) => setParcelas(e.target.value)}
+                  />
+                </label>
+              </>
+            )}
+          </div>
+
+          {ehParcelado && (
+            <p className="explicacao">
+              Serão criados <strong>{quantidadeDeParcelas} lançamentos</strong>, um por mês, de{' '}
+              {formatarDinheiro(Number(valor.replace(',', '.')) || 0)} cada — total de{' '}
+              {formatarDinheiro((Number(valor.replace(',', '.')) || 0) * quantidadeDeParcelas)}. A
+              Projeção já enxerga todos eles.
+            </p>
+          )}
 
           {erroDoFormulario && <p className="mensagem-erro">{erroDoFormulario}</p>}
 
@@ -208,8 +377,21 @@ function Lancamentos() {
               <option value="GANHO">Só ganhos</option>
             </select>
           </label>
+
+          <label className="campo">
+            <span>Situação</span>
+            <select
+              value={statusFiltrado}
+              onChange={(e) => trocarStatusFiltrado(e.target.value as StatusTransacao | '')}
+            >
+              <option value="">Todas</option>
+              <option value="PENDENTE">A pagar / a receber</option>
+              <option value="CONCLUIDA">Pago / recebido</option>
+            </select>
+          </label>
         </div>
 
+        {aviso && <p className="mensagem-aviso">{aviso}</p>}
         {carregando && <p>Carregando…</p>}
         {erroDaLista && <p className="mensagem-erro">{erroDaLista}</p>}
 
@@ -218,28 +400,75 @@ function Lancamentos() {
         )}
 
         {!carregando && !erroDaLista && transacoes.length > 0 && (
-          <table className="tabela">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Categoria</th>
-                <th className="alinhado-direita">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transacoes.map((t) => (
-                <tr key={t.id}>
-                  <td>{formatarData(t.data)}</td>
-                  <td>{t.categoria}</td>
-                  <td
-                    className={`alinhado-direita ${t.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}
-                  >
-                    {t.tipo === 'GANHO' ? '+' : '−'} {formatarDinheiro(t.valor)}
-                  </td>
+          <div className="tabela-rolavel">
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Pagamento</th>
+                  <th className="alinhado-direita">Valor</th>
+                  <th>Situação</th>
+                  <th className="alinhado-direita">Ações</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {transacoes.map((t) => {
+                  const parcela = rotuloDaParcela(t.parcelaAtual, t.parcelasTotais);
+
+                  return (
+                    <tr key={t.id}>
+                      <td>{formatarData(t.data)}</td>
+                      <td>
+                        {t.descricao}
+                        {parcela && <span className="marcador"> {parcela}</span>}
+                        {t.classificacao && (
+                          <span className="etiqueta">
+                            {t.classificacao === 'FIXO' ? 'Fixo' : 'Variável'}
+                          </span>
+                        )}
+                      </td>
+                      <td>{t.categoria}</td>
+                      <td>{t.formaDePagamento ?? '—'}</td>
+                      <td
+                        className={`alinhado-direita ${t.tipo === 'GANHO' ? 'ganho' : 'gasto'}`}
+                      >
+                        {t.tipo === 'GANHO' ? '+' : '−'} {formatarDinheiro(t.valor)}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            t.status === 'PENDENTE' ? 'situacao situacao--pendente' : 'situacao'
+                          }
+                        >
+                          {rotuloDoStatus(t.tipo, t.status)}
+                        </span>
+                      </td>
+                      <td className="alinhado-direita">
+                        <div className="acoes">
+                          <button
+                            type="button"
+                            className="botao--discreto"
+                            onClick={() => aoAlternarStatus(t)}
+                          >
+                            {rotuloDaAcaoDeStatus(t.tipo, t.status)}
+                          </button>
+                          <button
+                            type="button"
+                            className="botao--discreto"
+                            onClick={() => aoExcluir(t)}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </>

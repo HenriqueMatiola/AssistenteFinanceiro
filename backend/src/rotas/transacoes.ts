@@ -5,11 +5,26 @@
  * `req.usuarioId` sempre existe aqui. Toda consulta filtra por ele — é isso
  * que impede um usuário de ver os dados do outro.
  */
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { prisma } from '../prisma.ts';
 import { idDoUsuarioLogado } from '../auth.ts';
-import { TipoTransacao } from '../generated/prisma/enums.ts';
-import { ErroDeValidacao, intervaloDoMes } from '../validacao.ts';
+import { ClassificacaoGasto, StatusTransacao, TipoTransacao } from '../generated/prisma/enums.ts';
+import {
+  ErroDeValidacao,
+  intervaloDoMes,
+  validarCategoria,
+  validarClassificacao,
+  validarDescricao,
+  validarFormaDePagamento,
+  validarId,
+  validarParcelas,
+  validarStatus,
+  validarTipo,
+  validarValor,
+} from '../validacao.ts';
+import { responderErro } from '../respostas.ts';
+import { datasDasParcelas } from '../parcelas.ts';
 
 export const rotasDeTransacoes = Router();
 
@@ -36,46 +51,32 @@ function validarData(bruto: unknown): Date {
   return data;
 }
 
+/** Lançamento inexistente, ou de outro usuário: vira 404. */
+class TransacaoNaoEncontrada extends Error {}
+
 /**
- * Devolve o valor como string com 2 casas (ex: "1234.56").
- * Texto, e não número, porque é assim que o valor chega ao PostgreSQL sem
- * passar por nenhuma conversão que possa perder centavos.
+ * Confere que o lançamento existe E pertence a quem está pedindo, devolvendo o
+ * grupo de parcelas dele.
+ *
+ * Sem esta checagem, um `update` filtrando só pelo id deixaria uma pessoa
+ * alterar o lançamento da outra apenas adivinhando o número. Responder 404 (e
+ * não 403) para o lançamento alheio é de propósito: assim nem dá para
+ * descobrir quais ids existem.
  */
-function validarValor(bruto: unknown): string {
-  const numero =
-    typeof bruto === 'string' ? Number(bruto.replace(',', '.')) : bruto;
+async function exigirTransacaoDoUsuario(
+  id: number,
+  usuarioId: number
+): Promise<{ grupoDeParcelas: string | null }> {
+  const transacao = await prisma.transacao.findFirst({
+    where: { id, usuarioId },
+    select: { grupoDeParcelas: true },
+  });
 
-  if (typeof numero !== 'number' || !Number.isFinite(numero)) {
-    throw new ErroDeValidacao('Valor inválido.');
-  }
-  if (numero <= 0) {
-    // O sinal vem do campo `tipo`, não do valor.
-    throw new ErroDeValidacao('O valor precisa ser maior que zero.');
-  }
-  // A coluna é DECIMAL(12,2): no máximo 10 dígitos antes da vírgula.
-  if (numero >= 10_000_000_000) {
-    throw new ErroDeValidacao('Valor alto demais.');
+  if (!transacao) {
+    throw new TransacaoNaoEncontrada();
   }
 
-  return numero.toFixed(2);
-}
-
-function validarCategoria(bruto: unknown): string {
-  if (typeof bruto !== 'string' || !bruto.trim()) {
-    throw new ErroDeValidacao('Informe uma categoria.');
-  }
-  const categoria = bruto.trim();
-  if (categoria.length > 60) {
-    throw new ErroDeValidacao('Categoria longa demais (máximo 60 caracteres).');
-  }
-  return categoria;
-}
-
-function validarTipo(bruto: unknown): TipoTransacao {
-  if (bruto !== TipoTransacao.GASTO && bruto !== TipoTransacao.GANHO) {
-    throw new ErroDeValidacao('Tipo inválido. Use GASTO ou GANHO.');
-  }
-  return bruto;
+  return transacao;
 }
 
 // --- Formato de saída -------------------------------------------------------
@@ -83,9 +84,16 @@ function validarTipo(bruto: unknown): TipoTransacao {
 interface TransacaoDoBanco {
   id: number;
   data: Date;
+  descricao: string;
   valor: { toNumber(): number };
   categoria: string;
   tipo: TipoTransacao;
+  status: StatusTransacao;
+  formaDePagamento: string | null;
+  classificacao: ClassificacaoGasto | null;
+  parcelaAtual: number | null;
+  parcelasTotais: number | null;
+  grupoDeParcelas: string | null;
 }
 
 /**
@@ -97,9 +105,16 @@ function paraResposta(t: TransacaoDoBanco) {
   return {
     id: t.id,
     data: t.data.toISOString().slice(0, 10),
+    descricao: t.descricao,
     valor: t.valor.toNumber(),
     categoria: t.categoria,
     tipo: t.tipo,
+    status: t.status,
+    formaDePagamento: t.formaDePagamento,
+    classificacao: t.classificacao,
+    parcelaAtual: t.parcelaAtual,
+    parcelasTotais: t.parcelasTotais,
+    grupoDeParcelas: t.grupoDeParcelas,
   };
 }
 
@@ -107,20 +122,25 @@ function paraResposta(t: TransacaoDoBanco) {
 
 /**
  * GET /api/transacoes
- * Filtros opcionais: ?mes=2026-08  &tipo=GASTO
+ * Filtros opcionais: ?mes=2026-08  &tipo=GASTO  &status=PENDENTE
  */
 rotasDeTransacoes.get('/', async (req, res) => {
   try {
     const filtro: {
       usuarioId: number;
       tipo?: TipoTransacao;
+      status?: StatusTransacao;
       data?: { gte: Date; lt: Date };
     } = { usuarioId: idDoUsuarioLogado(req) };
 
-    const { mes, tipo } = req.query;
+    const { mes, tipo, status } = req.query;
 
     if (typeof tipo === 'string' && tipo !== '') {
       filtro.tipo = validarTipo(tipo);
+    }
+
+    if (typeof status === 'string' && status !== '') {
+      filtro.status = validarStatus(status);
     }
 
     if (typeof mes === 'string' && mes !== '') {
@@ -134,39 +154,134 @@ rotasDeTransacoes.get('/', async (req, res) => {
 
     res.json({ transacoes: transacoes.map(paraResposta) });
   } catch (erro) {
-    if (erro instanceof ErroDeValidacao) {
-      res.status(400).json({ erro: erro.message });
-      return;
-    }
-    console.error('Falha ao listar transações:', erro);
-    res.status(500).json({ erro: 'Erro interno ao listar transações.' });
+    responderErro(res, erro, 'listar as transações');
   }
 });
 
-/** POST /api/transacoes — cria um lançamento para o usuário logado. */
+/**
+ * POST /api/transacoes — cria um lançamento para o usuário logado.
+ *
+ * Com `parcelas: 12`, cria as 12 de uma vez, uma por mês. O `valor` informado
+ * é o de CADA parcela (o número que cai na fatura), não o total da compra —
+ * assim não sobra centavo de uma divisão que não fecha.
+ *
+ * Devolve sempre uma lista, mesmo quando é um lançamento só: quem chama não
+ * precisa tratar dois formatos de resposta diferentes.
+ */
 rotasDeTransacoes.post('/', async (req, res) => {
   try {
     const corpo = req.body as Record<string, unknown>;
 
-    const transacao = await prisma.transacao.create({
-      data: {
-        // O dono vem SEMPRE do token, nunca do corpo da requisição — senão
-        // qualquer um poderia lançar transações na conta de outra pessoa.
-        usuarioId: idDoUsuarioLogado(req),
-        data: validarData(corpo['data']),
-        valor: validarValor(corpo['valor']),
-        categoria: validarCategoria(corpo['categoria']),
-        tipo: validarTipo(corpo['tipo']),
-      },
-    });
+    const usuarioId = idDoUsuarioLogado(req);
+    const dataInicial = validarData(corpo['data']);
+    const quantidadeDeParcelas = validarParcelas(corpo['parcelas']);
+    const statusPedido = corpo['status'] === undefined
+      ? StatusTransacao.CONCLUIDA
+      : validarStatus(corpo['status']);
 
-    res.status(201).json({ transacao: paraResposta(transacao) });
-  } catch (erro) {
-    if (erro instanceof ErroDeValidacao) {
-      res.status(400).json({ erro: erro.message });
+    // Campos que todas as parcelas compartilham.
+    const comuns = {
+      // O dono vem SEMPRE do token, nunca do corpo da requisição — senão
+      // qualquer um poderia lançar transações na conta de outra pessoa.
+      usuarioId,
+      descricao: validarDescricao(corpo['descricao']),
+      valor: validarValor(corpo['valor']),
+      categoria: validarCategoria(corpo['categoria']),
+      tipo: validarTipo(corpo['tipo']),
+      formaDePagamento: validarFormaDePagamento(corpo['formaDePagamento']),
+      classificacao: validarClassificacao(corpo['classificacao']),
+    };
+
+    if (quantidadeDeParcelas === 1) {
+      const transacao = await prisma.transacao.create({
+        data: { ...comuns, data: dataInicial, status: statusPedido },
+      });
+
+      res.status(201).json({ transacoes: [paraResposta(transacao)] });
       return;
     }
-    console.error('Falha ao criar transação:', erro);
-    res.status(500).json({ erro: 'Erro interno ao criar a transação.' });
+
+    // Um id só, compartilhado, para depois dar para apagar a compra inteira
+    // sem caçar parcela por parcela.
+    const grupoDeParcelas = randomUUID();
+
+    const parcelas = datasDasParcelas(dataInicial, quantidadeDeParcelas).map((data, indice) => ({
+      ...comuns,
+      data,
+      // Só a primeira parcela pode já estar paga; as outras ainda nem
+      // venceram, então nascem pendentes independentemente do que foi pedido.
+      status: indice === 0 ? statusPedido : StatusTransacao.PENDENTE,
+      parcelaAtual: indice + 1,
+      parcelasTotais: quantidadeDeParcelas,
+      grupoDeParcelas,
+    }));
+
+    // createMany insere tudo numa ida só ao banco, mas não devolve as linhas
+    // criadas — por isso a busca logo em seguida, pelo grupo.
+    await prisma.transacao.createMany({ data: parcelas });
+
+    const criadas = await prisma.transacao.findMany({
+      where: { grupoDeParcelas, usuarioId },
+      orderBy: { data: 'asc' },
+    });
+
+    res.status(201).json({ transacoes: criadas.map(paraResposta) });
+  } catch (erro) {
+    responderErro(res, erro, 'criar a transação');
+  }
+});
+
+/**
+ * PATCH /api/transacoes/:id  { "status": "CONCLUIDA" }
+ * Marca como pago/recebido (ou volta para pendente).
+ */
+rotasDeTransacoes.patch('/:id', async (req, res) => {
+  try {
+    const id = validarId(req.params.id);
+    const status = validarStatus((req.body as Record<string, unknown>)['status']);
+
+    await exigirTransacaoDoUsuario(id, idDoUsuarioLogado(req));
+
+    const transacao = await prisma.transacao.update({
+      where: { id },
+      data: { status },
+    });
+
+    res.json({ transacao: paraResposta(transacao) });
+  } catch (erro) {
+    if (erro instanceof TransacaoNaoEncontrada) {
+      res.status(404).json({ erro: 'Lançamento não encontrado.' });
+      return;
+    }
+    responderErro(res, erro, 'atualizar o lançamento');
+  }
+});
+
+/**
+ * DELETE /api/transacoes/:id
+ * Com `?todasAsParcelas=true`, apaga a compra parcelada inteira — cancelar uma
+ * assinatura de 12x apagando 12 linhas à mão seria tortura.
+ */
+rotasDeTransacoes.delete('/:id', async (req, res) => {
+  try {
+    const id = validarId(req.params.id);
+    const usuarioId = idDoUsuarioLogado(req);
+
+    const { grupoDeParcelas } = await exigirTransacaoDoUsuario(id, usuarioId);
+    const apagarGrupo = req.query['todasAsParcelas'] === 'true' && grupoDeParcelas !== null;
+
+    // O filtro por usuarioId fica aqui também, e não só na checagem acima:
+    // é a garantia de que um deleteMany por grupo nunca alcança outra conta.
+    const { count } = await prisma.transacao.deleteMany({
+      where: apagarGrupo ? { grupoDeParcelas, usuarioId } : { id, usuarioId },
+    });
+
+    res.json({ apagados: count });
+  } catch (erro) {
+    if (erro instanceof TransacaoNaoEncontrada) {
+      res.status(404).json({ erro: 'Lançamento não encontrado.' });
+      return;
+    }
+    responderErro(res, erro, 'excluir o lançamento');
   }
 });

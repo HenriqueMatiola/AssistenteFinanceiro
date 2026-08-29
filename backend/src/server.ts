@@ -6,6 +6,8 @@ import { prisma } from './prisma.ts';
 import { gerarToken, exigirLogin } from './auth.ts';
 import { rotasDeTransacoes } from './rotas/transacoes.ts';
 import { rotasDeResumo } from './rotas/resumo.ts';
+import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
+import { rotasDeProjecao } from './rotas/projecao.ts';
 
 const app = express();
 
@@ -119,6 +121,10 @@ app.use('/api/transacoes', exigirLogin, rotasDeTransacoes);
 
 // Totais e agrupamentos do Dashboard.
 app.use('/api/resumo', exigirLogin, rotasDeResumo);
+
+// Contas que se repetem todo mês, e a projeção que as usa.
+app.use('/api/recorrencias', exigirLogin, rotasDeRecorrencias);
+app.use('/api/projecao', exigirLogin, rotasDeProjecao);
 
 const porta = Number(process.env.PORT ?? 3001);
 
