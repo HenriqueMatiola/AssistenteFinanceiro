@@ -408,3 +408,75 @@ export async function buscarProjecao(inicio?: string, meses?: number): Promise<P
   const consulta = parametros.toString();
   return chamar(`/api/projecao${consulta ? `?${consulta}` : ''}`);
 }
+
+// --- Investimentos ----------------------------------------------------------
+
+export interface Investimento {
+  id: number;
+  /** Código na fonte de cotação: PETR4.SA, BTC-USD. */
+  ativo: string;
+  apelido: string | null;
+  /** "AAAA-MM-DD". */
+  dataDaCompra: string;
+  quantidade: number;
+  /** O total desembolsado na compra, em reais. */
+  valorPago: number;
+
+  /** Preço de uma unidade, já convertido para reais. Null se a fonte falhou. */
+  cotacao: number | null;
+  /** Moeda em que o ativo é cotado na origem. */
+  moedaOriginal: string | null;
+  /** O preço antes da conversão. */
+  precoOriginal: number | null;
+  /** Taxa usada na conversão; null quando o ativo já cotava em reais. */
+  cambio: number | null;
+
+  /** Valor pago dividido pela quantidade. */
+  precoMedio: number;
+  /** Quanto a posição vale agora. Null sem cotação. */
+  valorAtual: number | null;
+  /** Valor atual menos valor pago. Negativo é prejuízo. */
+  lucro: number | null;
+  /** O lucro como fração do que foi pago (0.15 = +15%). */
+  variacao: number | null;
+}
+
+export interface TotalDaCarteira {
+  valorPago: number;
+  valorAtual: number;
+  lucro: number;
+  variacao: number | null;
+  /** Quantas posições ficaram sem cotação — elas não entram no total. */
+  semCotacao: number;
+}
+
+export interface Carteira {
+  investimentos: Investimento[];
+  total: TotalDaCarteira;
+  /** True quando algum ativo não teve preço — os números estão incompletos. */
+  cotacaoIndisponivel: boolean;
+}
+
+export interface NovoInvestimento {
+  ativo: string;
+  apelido?: string;
+  dataDaCompra: string;
+  quantidade: number;
+  valorPago: number;
+}
+
+/** A carteira com cotação buscada ao vivo. Nada de preço fica guardado. */
+export async function buscarCarteira(): Promise<Carteira> {
+  return chamar('/api/investimentos');
+}
+
+export async function criarInvestimento(novo: NovoInvestimento): Promise<void> {
+  await chamar('/api/investimentos', {
+    method: 'POST',
+    body: JSON.stringify(novo),
+  });
+}
+
+export async function excluirInvestimento(id: number): Promise<void> {
+  await chamar(`/api/investimentos/${id}`, { method: 'DELETE' });
+}

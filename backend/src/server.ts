@@ -8,6 +8,7 @@ import { rotasDeTransacoes } from './rotas/transacoes.ts';
 import { rotasDeResumo } from './rotas/resumo.ts';
 import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
 import { rotasDeProjecao } from './rotas/projecao.ts';
+import { rotasDeInvestimentos } from './rotas/investimentos.ts';
 
 const app = express();
 
@@ -125,6 +126,9 @@ app.use('/api/resumo', exigirLogin, rotasDeResumo);
 // Contas que se repetem todo mês, e a projeção que as usa.
 app.use('/api/recorrencias', exigirLogin, rotasDeRecorrencias);
 app.use('/api/projecao', exigirLogin, rotasDeProjecao);
+
+// Carteira de ativos, com cotação buscada ao vivo a cada consulta.
+app.use('/api/investimentos', exigirLogin, rotasDeInvestimentos);
 
 const porta = Number(process.env.PORT ?? 3001);
 

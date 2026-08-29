@@ -6,11 +6,18 @@ import Dashboard from './Dashboard.tsx';
 import Lancamentos from './Lancamentos.tsx';
 import Recorrencias from './Recorrencias.tsx';
 import Projecao from './Projecao.tsx';
+import Investimentos from './Investimentos.tsx';
 import Inicio from './Inicio.tsx';
 
-// Navegação por estado. Quando entrar Investimentos vale trocar por um
-// roteador de verdade, com URL própria para cada aba.
-type Aba = 'dashboard' | 'lancamentos' | 'projecao' | 'recorrencias' | 'inicio';
+// Navegação por estado. Com seis telas, já vale trocar por um roteador de
+// verdade, para cada aba ter URL própria e o botão voltar funcionar.
+type Aba =
+  | 'dashboard'
+  | 'lancamentos'
+  | 'projecao'
+  | 'recorrencias'
+  | 'investimentos'
+  | 'inicio';
 
 /**
  * `usaMes` diz se a tela trabalha com um mês específico. A trilha de meses só
@@ -22,6 +29,7 @@ const ABAS: { id: Aba; rotulo: string; usaMes: boolean }[] = [
   { id: 'lancamentos', rotulo: 'Lançamentos', usaMes: true },
   { id: 'projecao', rotulo: 'Projeção', usaMes: false },
   { id: 'recorrencias', rotulo: 'Recorrências', usaMes: false },
+  { id: 'investimentos', rotulo: 'Investimentos', usaMes: false },
   { id: 'inicio', rotulo: 'Início', usaMes: false },
 ];
 
@@ -98,6 +106,7 @@ function AreaLogada({ usuario, aoSair }: Props) {
           {aba === 'lancamentos' && <Lancamentos mes={mes} aoTrocarMes={setMes} />}
           {aba === 'projecao' && <Projecao />}
           {aba === 'recorrencias' && <Recorrencias />}
+          {aba === 'investimentos' && <Investimentos />}
           {aba === 'inicio' && <Inicio />}
         </div>
       </main>

@@ -81,3 +81,21 @@ export function rotuloDaParcela(atual: number | null, totais: number | null): st
   if (atual === null || totais === null) return '';
   return `${atual}/${totais}`;
 }
+
+/**
+ * 0.1833 → "+18,33%". O sinal vai junto porque, num rendimento, "18%" e
+ * "−18%" são notícias opostas e a cor sozinha não deve carregar essa
+ * diferença — quem não distingue verde de vermelho ficaria sem a informação.
+ */
+export function formatarPercentual(fracao: number): string {
+  const sinal = fracao > 0 ? '+' : '';
+  return `${sinal}${(fracao * 100).toFixed(2).replace('.', ',')}%`;
+}
+
+/**
+ * Quantidade de um ativo: 100 ações são "100", mas 0,005 BTC precisam das
+ * casas decimais. Mostra só as casas que existem.
+ */
+export function formatarQuantidade(quantidade: number): string {
+  return quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 8 });
+}

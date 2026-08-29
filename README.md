@@ -96,6 +96,9 @@ Depois abra <http://localhost:5173> no navegador.
 | `DELETE /api/recorrencias/:id` | **Protegida.** Apaga a recorrência de vez |
 | `GET /api/recorrencias/previstas` | **Protegida.** As recorrências que ainda não viraram lançamento no mês, com a data prevista. `?mes=2026-08` |
 | `POST /api/recorrencias/:id/lancar` | **Protegida.** Transforma a previsão de um mês em lançamento de verdade, vinculado à recorrência. `{mes, valor?}`; 409 se já foi lançada |
+| `GET /api/investimentos` | **Protegida.** A carteira com cotação buscada ao vivo, lucro/prejuízo por ativo e total |
+| `POST /api/investimentos` | **Protegida.** Registra uma compra `{ativo, apelido?, dataDaCompra, quantidade, valorPago}` |
+| `DELETE /api/investimentos/:id` | **Protegida.** Apaga a posição |
 | `GET /api/projecao` | **Protegida.** Saldo projetado por mês. `?inicio=2026-09&meses=6` (padrão: 6 meses a partir do mês que vem) |
 
 ## Banco de dados
@@ -123,6 +126,18 @@ o aplica no banco.
 - **A tela de Lançamentos mostra previsões e lançamentos na mesma lista**,
   ordenados por data. As previstas vêm marcadas e trazem o botão de marcar
   como paga, que é o que as converte em lançamento.
+- **Nenhuma cotação é gravada.** Preço guardado envelhece em minutos e
+  passaria a mentir sobre o patrimônio; ele é buscado a cada abertura da
+  tela, com cache de 30 s em memória só para não virar rajada.
+- **A fonte de cotação (Yahoo Finance) fica atrás de uma interface** em
+  `backend/src/cotacoes.ts`. É uma API não oficial e pode sair do ar:
+  trocar de provedor deve ser reescrever um arquivo só.
+- **Ativo cotado em outra moeda é convertido para reais** pela taxa do dia
+  (`USDBRL=X`). Sem isso, comparar um preço em dólar com um valor pago em
+  reais daria um "lucro" que é só a diferença de câmbio.
+- **Ativo sem cotação fica fora dos DOIS lados do total.** Somar o valor
+  pago sem o valor atual correspondente inventaria um prejuízo do tamanho
+  da posição.
 - **Mês passado não recebe previsão.** Previsão é sobre o que ainda vai
   acontecer; estimar um mês encerrado esconderia o lançamento esquecido.
 - **Entradas e saídas do mês contam tudo que está lançado, pago ou não.** É
@@ -146,16 +161,17 @@ o aplica no banco.
 
 ## Estado atual
 
-Etapas 0 a 5 concluídas, mais o redesenho visual:
+Todas as etapas do plano estão feitas, menos o polimento final:
 
 - **0–1** — repositório, PostgreSQL no Docker, login com hash e JWT
 - **2** — tabela `transacoes` e tela de Lançamentos
-- **3** — Dashboard: totais do mês e gráfico de gastos por categoria
-- **4** — tabela `recorrencias`, motor de projeção (com testes) e tela de Projeção
+- **3** — Dashboard: totais do mês e gráfico por categoria
+- **4** — recorrências, motor de projeção (com testes) e tela de Projeção
 - **5** — lançamentos completos: descrição, situação, forma de pagamento,
   fixo/variável, parcelamento automático e balanço com sobra do mês anterior
+- **6** — Investimentos: carteira com cotação ao vivo e lucro/prejuízo
 - **visual** — identidade própria, barra lateral e trilha de meses
-- **balanço com previsão** — as recorrências entram no balanço do mês antes
-  de virarem lançamento, sem dupla contagem
+- **balanço com previsão** — recorrências entram no mês antes de virar
+  lançamento, sem dupla contagem, e aparecem na lista de Lançamentos
 
-Investimentos (Etapa 6) foi adiada. Falta o polimento final (Etapa 7).
+Falta a Etapa 7 — polimento (erros nas telas, revisão visual, celular).

@@ -811,3 +811,11 @@ form button[type='submit']:hover:not(:disabled) {
 .linha--prevista td:first-child {
   box-shadow: inset 3px 0 0 var(--ambar-forte);
 }
+
+/* Números que não são dinheiro com cor (quantidade, preço médio, cotação):
+   mono para alinhar as colunas, sem o verde/vermelho que significa resultado. */
+.numero {
+  font-family: var(--fonte-dados);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
