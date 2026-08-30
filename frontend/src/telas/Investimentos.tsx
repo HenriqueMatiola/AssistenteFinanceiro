@@ -18,6 +18,10 @@ import {
   hojeISO,
   mesAtualISO,
 } from '../formato.ts';
+import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
+import SeletorDeData from '../componentes/SeletorDeData.tsx';
+import SeletorDeMes from '../componentes/SeletorDeMes.tsx';
+import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 
 /**
  * Exemplos de código, por tipo de ativo. O código é o que a fonte de cotação
@@ -171,53 +175,55 @@ function Investimentos() {
           <div className="linha-de-campos">
             <label className="campo">
               <span>Operação</span>
-              <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoDeOperacao)}>
-                <option value="COMPRA">Compra</option>
-                <option value="VENDA">Venda</option>
-              </select>
+              <SelectPersonalizado<TipoDeOperacao>
+                valor={tipo}
+                aoMudar={setTipo}
+                rotuloAcessivel="Tipo da operação"
+                opcoes={[
+                  { valor: 'COMPRA', rotulo: 'Compra' },
+                  { valor: 'VENDA', rotulo: 'Venda' },
+                ]}
+              />
             </label>
 
             <label className="campo">
               <span>Código do ativo</span>
-              <input
-                type="text"
-                list="ativos-exemplo"
+              <CampoComSugestoes
+                valor={ativo}
+                aoMudar={setAtivo}
+                sugestoes={EXEMPLOS_DE_ATIVO.map((item) => ({
+                  valor: item.codigo,
+                  detalhe: item.descricao,
+                }))}
                 placeholder="Ex: PETR4.SA"
-                value={ativo}
-                onChange={(e) => setAtivo(e.target.value)}
-                required
+                rotuloAcessivel="Código do ativo"
+                obrigatorio
               />
-              <datalist id="ativos-exemplo">
-                {EXEMPLOS_DE_ATIVO.map((a) => (
-                  <option key={a.codigo} value={a.codigo}>
-                    {a.descricao}
-                  </option>
-                ))}
-              </datalist>
             </label>
 
             <label className="campo">
               <span>Tipo de ativo</span>
-              <select
-                value={classe}
-                onChange={(e) => setClasse(e.target.value as ClasseDeAtivo | '')}
-              >
-                <option value="">Descobrir pelo código</option>
-                {(Object.keys(NOME_DA_CLASSE) as ClasseDeAtivo[]).map((c) => (
-                  <option key={c} value={c}>
-                    {NOME_DA_CLASSE[c]}
-                  </option>
-                ))}
-              </select>
+              <SelectPersonalizado<ClasseDeAtivo | ''>
+                valor={classe}
+                aoMudar={setClasse}
+                rotuloAcessivel="Tipo de ativo"
+                opcoes={[
+                  { valor: '', rotulo: 'Descobrir pelo código' },
+                  ...(Object.keys(NOME_DA_CLASSE) as ClasseDeAtivo[]).map((c) => ({
+                    valor: c,
+                    rotulo: NOME_DA_CLASSE[c],
+                  })),
+                ]}
+              />
             </label>
 
             <label className="campo">
               <span>Data</span>
-              <input
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                required
+              <SeletorDeData
+                valor={data}
+                aoMudar={setData}
+                rotuloAcessivel="Data da operação"
+                obrigatorio
               />
             </label>
           </div>
@@ -489,24 +495,26 @@ function Investimentos() {
             <div className="linha-de-campos linha-de-campos--filtros">
               <label className="campo">
                 <span>Mês</span>
-                <input
-                  type="month"
-                  value={mesFiltrado}
-                  max={mesAtualISO()}
-                  onChange={(e) => setMesFiltrado(e.target.value)}
+                <SeletorDeMes
+                  valor={mesFiltrado}
+                  aoMudar={setMesFiltrado}
+                  maximo={mesAtualISO()}
+                  rotuloAcessivel="Filtrar por mês"
                 />
               </label>
 
               <label className="campo">
                 <span>Operação</span>
-                <select
-                  value={tipoFiltrado}
-                  onChange={(e) => setTipoFiltrado(e.target.value as TipoDeOperacao | '')}
-                >
-                  <option value="">Compras e vendas</option>
-                  <option value="COMPRA">Só compras</option>
-                  <option value="VENDA">Só vendas</option>
-                </select>
+                <SelectPersonalizado<TipoDeOperacao | ''>
+                  valor={tipoFiltrado}
+                  aoMudar={setTipoFiltrado}
+                  rotuloAcessivel="Filtrar por operação"
+                  opcoes={[
+                    { valor: '', rotulo: 'Compras e vendas' },
+                    { valor: 'COMPRA', rotulo: 'Só compras' },
+                    { valor: 'VENDA', rotulo: 'Só vendas' },
+                  ]}
+                />
               </label>
 
               {(mesFiltrado || tipoFiltrado) && (

@@ -1,5 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  ArrowCounterClockwise,
+  Check,
+  CheckCircle,
+  ClockCountdown,
+  Minus,
+  Plus,
+  Trash,
+} from '@phosphor-icons/react';
+import {
   alterarStatusTransacao,
   criarTransacao,
   excluirTransacao,
@@ -13,14 +22,19 @@ import {
   type Transacao,
 } from '../api.ts';
 import {
+  formatarEntradaMonetaria,
   formatarData,
   formatarDinheiro,
   formatarMes,
+  numeroDaEntradaMonetaria,
   hojeISO,
   rotuloDaAcaoDeStatus,
   rotuloDaParcela,
   rotuloDoStatus,
 } from '../formato.ts';
+import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
+import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
+import SeletorDeData from '../componentes/SeletorDeData.tsx';
 
 // Sugestões que aparecem ao clicar no campo de categoria. O usuário pode
 // digitar qualquer outra coisa — é só um atalho.
@@ -36,9 +50,10 @@ const CATEGORIAS_SUGERIDAS = [
   'Outros',
 ];
 
-// Mesma ideia para a forma de pagamento: sugestões comuns, campo livre.
-// Não é lista fixa porque os cartões de cada pessoa são outros.
+// Gastos aceitam outros meios e cartões; ganhos entram somente por estes três
+// caminhos, para os relatórios não fragmentarem "depósito" em vários nomes.
 const FORMAS_SUGERIDAS = ['Pix', 'Dinheiro', 'Débito', 'Cartão de crédito', 'Boleto'];
+const FORMAS_DE_RECEBIMENTO = ['Pix', 'Dinheiro', 'Depósito em conta'] as const;
 
 /**
  * A lista mistura duas coisas: lançamentos de verdade e contas previstas pelas
@@ -149,6 +164,33 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
     setStatusFiltrado(novoStatus);
   }
 
+  function mudarTipo(novoTipo: TipoDoFormulario) {
+    setTipo(novoTipo);
+
+    if (
+      novoTipo === 'GANHO' &&
+      !FORMAS_DE_RECEBIMENTO.includes(
+        formaDePagamento as (typeof FORMAS_DE_RECEBIMENTO)[number]
+      )
+    ) {
+      setFormaDePagamento('Pix');
+    }
+  }
+
+  function mudarQuantidadeDeParcelas(diferenca: number) {
+    const atual = Number(parcelas) || 1;
+    setParcelas(String(Math.min(60, Math.max(1, atual + diferenca))));
+  }
+
+  function digitarQuantidadeDeParcelas(texto: string) {
+    const digitos = texto.replace(/\D/g, '');
+    if (!digitos) {
+      setParcelas('');
+      return;
+    }
+    setParcelas(String(Math.min(60, Math.max(1, Number(digitos)))));
+  }
+
   function recarregarLista() {
     setCarregando(true);
     setVersaoDaLista((n) => n + 1);
@@ -161,9 +203,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
     setSalvando(true);
 
     try {
-      // O input de valor é texto para aceitar vírgula, como se escreve em
-      // português. A conversão para número acontece aqui.
-      const valorNumerico = Number(valor.replace(',', '.'));
+      const valorNumerico = numeroDaEntradaMonetaria(valor);
 
       if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
         throw new Error('Informe um valor maior que zero.');
@@ -334,11 +374,11 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
               <label className="campo">
                 <span>Data</span>
-                <input
-                  type="date"
-                  value={data}
-                  onChange={(e) => setData(e.target.value)}
-                  required
+                <SeletorDeData
+                  valor={data}
+                  aoMudar={setData}
+                  rotuloAcessivel="Data do lançamento"
+                  obrigatorio
                 />
               </label>
             </div>
@@ -346,13 +386,14 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
           <div className="linha-de-campos">
             <label className="campo">
-              <span>{ehParcelado ? 'Valor da parcela (R$)' : 'Valor (R$)'}</span>
+              <span>{ehParcelado ? 'Valor da parcela' : 'Valor'}</span>
               <input
                 type="text"
-                inputMode="decimal"
-                placeholder="0,00"
+                inputMode="numeric"
+                placeholder="R$ 0,00"
                 value={valor}
-                onChange={(e) => setValor(e.target.value)}
+                onChange={(e) => setValor(formatarEntradaMonetaria(e.target.value))}
+                className="campo__dinheiro"
                 required
               />
             </label>
@@ -360,32 +401,29 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
             {!ehSobra && (
               <label className="campo">
                 <span>Categoria</span>
-                <input
-                  type="text"
-                  list="categorias-sugeridas"
+                <CampoComSugestoes
+                  valor={categoria}
+                  aoMudar={setCategoria}
+                  sugestoes={CATEGORIAS_SUGERIDAS}
                   placeholder="Ex: Lazer"
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  required
+                  rotuloAcessivel="Categoria do lançamento"
+                  obrigatorio
                 />
-                <datalist id="categorias-sugeridas">
-                  {CATEGORIAS_SUGERIDAS.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
               </label>
             )}
 
             <label className="campo">
               <span>Tipo</span>
-              <select
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as TipoDoFormulario)}
-              >
-                <option value="GASTO">Gasto</option>
-                <option value="GANHO">Ganho</option>
-                <option value="SOBRA">Sobra do mês anterior</option>
-              </select>
+              <SelectPersonalizado<TipoDoFormulario>
+                valor={tipo}
+                aoMudar={mudarTipo}
+                rotuloAcessivel="Tipo do lançamento"
+                opcoes={[
+                  { valor: 'GASTO', rotulo: 'Gasto' },
+                  { valor: 'GANHO', rotulo: 'Ganho' },
+                  { valor: 'SOBRA', rotulo: 'Sobra do mês anterior' },
+                ]}
+              />
             </label>
           </div>
 
@@ -405,29 +443,38 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
             <div className="linha-de-campos">
               <label className="campo">
                 <span>Situação</span>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as StatusTransacao)}
-                >
-                  <option value="PENDENTE">{rotuloDoStatus(tipo, 'PENDENTE')}</option>
-                  <option value="CONCLUIDA">{rotuloDoStatus(tipo, 'CONCLUIDA')}</option>
-                </select>
+                <SelectPersonalizado<StatusTransacao>
+                  valor={status}
+                  aoMudar={setStatus}
+                  rotuloAcessivel="Situação do lançamento"
+                  opcoes={[
+                    { valor: 'PENDENTE', rotulo: rotuloDoStatus(tipo, 'PENDENTE') },
+                    { valor: 'CONCLUIDA', rotulo: rotuloDoStatus(tipo, 'CONCLUIDA') },
+                  ]}
+                />
               </label>
 
               <label className="campo">
-                <span>Forma de pagamento</span>
-                <input
-                  type="text"
-                  list="formas-sugeridas"
-                  placeholder="Ex: Cartão Nubank"
-                  value={formaDePagamento}
-                  onChange={(e) => setFormaDePagamento(e.target.value)}
-                />
-                <datalist id="formas-sugeridas">
-                  {FORMAS_SUGERIDAS.map((f) => (
-                    <option key={f} value={f} />
-                  ))}
-                </datalist>
+                <span>{tipo === 'GANHO' ? 'Forma de recebimento' : 'Forma de pagamento'}</span>
+                {tipo === 'GANHO' ? (
+                  <SelectPersonalizado<string>
+                    valor={formaDePagamento}
+                    aoMudar={setFormaDePagamento}
+                    rotuloAcessivel="Forma de recebimento"
+                    opcoes={FORMAS_DE_RECEBIMENTO.map((forma) => ({
+                      valor: forma,
+                      rotulo: forma,
+                    }))}
+                  />
+                ) : (
+                  <CampoComSugestoes
+                    valor={formaDePagamento}
+                    aoMudar={setFormaDePagamento}
+                    sugestoes={FORMAS_SUGERIDAS}
+                    placeholder="Ex: Cartão Nubank"
+                    rotuloAcessivel="Forma de pagamento"
+                  />
+                )}
               </label>
 
               {/* Fixo/variável e parcelamento só fazem sentido para gasto. */}
@@ -435,27 +482,51 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                 <>
                   <label className="campo">
                     <span>Fixo ou variável</span>
-                    <select
-                      value={classificacao}
-                      onChange={(e) =>
-                        setClassificacao(e.target.value as ClassificacaoGasto | '')
-                      }
-                    >
-                      <option value="">Não classificar</option>
-                      <option value="FIXO">Fixo</option>
-                      <option value="VARIAVEL">Variável</option>
-                    </select>
+                    <SelectPersonalizado<ClassificacaoGasto | ''>
+                      valor={classificacao}
+                      aoMudar={setClassificacao}
+                      rotuloAcessivel="Classificação do gasto"
+                      opcoes={[
+                        { valor: '', rotulo: 'Não classificar' },
+                        { valor: 'FIXO', rotulo: 'Fixo' },
+                        { valor: 'VARIAVEL', rotulo: 'Variável' },
+                      ]}
+                    />
                   </label>
 
                   <label className="campo">
                     <span>Parcelas</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={parcelas}
-                      onChange={(e) => setParcelas(e.target.value)}
-                    />
+                    <div className="controle-parcelas" role="group" aria-label="Quantidade de parcelas">
+                      <button
+                        type="button"
+                        onClick={() => mudarQuantidadeDeParcelas(-1)}
+                        disabled={quantidadeDeParcelas <= 1}
+                        aria-label="Diminuir parcelas"
+                      >
+                        <Minus weight="bold" aria-hidden="true" />
+                      </button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={parcelas}
+                        onChange={(e) => digitarQuantidadeDeParcelas(e.target.value)}
+                        onBlur={() => {
+                          if (!parcelas) setParcelas('1');
+                        }}
+                        aria-label="Número de parcelas"
+                      />
+                      <span className="controle-parcelas__sufixo">
+                        {quantidadeDeParcelas === 1 ? 'parcela' : 'parcelas'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => mudarQuantidadeDeParcelas(1)}
+                        disabled={quantidadeDeParcelas >= 60}
+                        aria-label="Aumentar parcelas"
+                      >
+                        <Plus weight="bold" aria-hidden="true" />
+                      </button>
+                    </div>
                   </label>
                 </>
               )}
@@ -465,8 +536,8 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
           {ehParcelado && (
             <p className="explicacao">
               Serão criados <strong>{quantidadeDeParcelas} lançamentos</strong>, um por mês, de{' '}
-              {formatarDinheiro(Number(valor.replace(',', '.')) || 0)} cada — total de{' '}
-              {formatarDinheiro((Number(valor.replace(',', '.')) || 0) * quantidadeDeParcelas)}. A
+              {formatarDinheiro(numeroDaEntradaMonetaria(valor))} cada — total de{' '}
+              {formatarDinheiro(numeroDaEntradaMonetaria(valor) * quantidadeDeParcelas)}. A
               Projeção já enxerga todos eles.
             </p>
           )}
@@ -493,26 +564,30 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
         <div className="linha-de-campos linha-de-campos--filtros">
           <label className="campo">
             <span>Tipo</span>
-            <select
-              value={tipoFiltrado}
-              onChange={(e) => trocarTipoFiltrado(e.target.value as TipoTransacao | '')}
-            >
-              <option value="">Todos</option>
-              <option value="GASTO">Só gastos</option>
-              <option value="GANHO">Só ganhos</option>
-            </select>
+            <SelectPersonalizado<TipoTransacao | ''>
+              valor={tipoFiltrado}
+              aoMudar={trocarTipoFiltrado}
+              rotuloAcessivel="Filtrar por tipo"
+              opcoes={[
+                { valor: '', rotulo: 'Todos' },
+                { valor: 'GASTO', rotulo: 'Só gastos' },
+                { valor: 'GANHO', rotulo: 'Só ganhos' },
+              ]}
+            />
           </label>
 
           <label className="campo">
             <span>Situação</span>
-            <select
-              value={statusFiltrado}
-              onChange={(e) => trocarStatusFiltrado(e.target.value as StatusTransacao | '')}
-            >
-              <option value="">Todas</option>
-              <option value="PENDENTE">A pagar / a receber</option>
-              <option value="CONCLUIDA">Pago / recebido</option>
-            </select>
+            <SelectPersonalizado<StatusTransacao | ''>
+              valor={statusFiltrado}
+              aoMudar={trocarStatusFiltrado}
+              rotuloAcessivel="Filtrar por situação"
+              opcoes={[
+                { valor: '', rotulo: 'Todas' },
+                { valor: 'PENDENTE', rotulo: 'A pagar / a receber' },
+                { valor: 'CONCLUIDA', rotulo: 'Pago / recebido' },
+              ]}
+            />
           </label>
         </div>
 
@@ -561,17 +636,19 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                         </td>
                         <td data-rotulo="Situação">
                           <span className="situacao situacao--pendente">
-                            {rotuloDoStatus(p.tipo, 'PENDENTE')}
+                            <ClockCountdown weight="bold" aria-hidden="true" />
+                            <span>{rotuloDoStatus(p.tipo, 'PENDENTE')}</span>
                           </span>
                         </td>
                         <td className="alinhado-direita">
                           <div className="acoes">
                             <button
                               type="button"
-                              className="botao--discreto"
+                              className="botao--discreto botao--acao botao--acao-concluir"
                               disabled={lancando === p.id}
                               onClick={() => aoLancarPrevisao(p)}
                             >
+                              <Check weight="bold" aria-hidden="true" />
                               {lancando === p.id
                                 ? 'Lançando…'
                                 : rotuloDaAcaoDeStatus(p.tipo, 'PENDENTE')}
@@ -617,26 +694,43 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                       <td data-rotulo="Situação">
                         <span
                           className={
-                            t.status === 'PENDENTE' ? 'situacao situacao--pendente' : 'situacao'
+                            t.status === 'PENDENTE'
+                              ? 'situacao situacao--pendente'
+                              : 'situacao situacao--concluida'
                           }
                         >
-                          {rotuloDoStatus(t.tipo, t.status)}
+                          {t.status === 'PENDENTE' ? (
+                            <ClockCountdown weight="bold" aria-hidden="true" />
+                          ) : (
+                            <CheckCircle weight="fill" aria-hidden="true" />
+                          )}
+                          <span>{rotuloDoStatus(t.tipo, t.status)}</span>
                         </span>
                       </td>
                       <td className="alinhado-direita">
                         <div className="acoes">
                           <button
                             type="button"
-                            className="botao--discreto"
+                            className={`botao--discreto botao--acao ${
+                              t.status === 'PENDENTE'
+                                ? 'botao--acao-concluir'
+                                : 'botao--acao-reabrir'
+                            }`}
                             onClick={() => aoAlternarStatus(t)}
                           >
+                            {t.status === 'PENDENTE' ? (
+                              <Check weight="bold" aria-hidden="true" />
+                            ) : (
+                              <ArrowCounterClockwise weight="bold" aria-hidden="true" />
+                            )}
                             {rotuloDaAcaoDeStatus(t.tipo, t.status)}
                           </button>
                           <button
                             type="button"
-                            className="botao--discreto botao--perigo"
+                            className="botao--discreto botao--perigo botao--acao botao--acao-excluir"
                             onClick={() => aoExcluir(t)}
                           >
+                            <Trash weight="bold" aria-hidden="true" />
                             Excluir
                           </button>
                         </div>

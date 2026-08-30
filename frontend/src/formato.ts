@@ -42,6 +42,19 @@ export function formatarDinheiro(valor: number): string {
   return formatadorDeDinheiro.format(valor);
 }
 
+/** Os dois últimos dígitos digitados são centavos: "123" vira "R$ 1,23". */
+export function formatarEntradaMonetaria(texto: string): string {
+  const digitos = texto.replace(/\D/g, '').slice(0, 13);
+  if (!digitos) return '';
+  return formatadorDeDinheiro.format(Number(digitos) / 100);
+}
+
+/** Converte uma entrada já formatada, como "R$ 1.234,56", novamente em número. */
+export function numeroDaEntradaMonetaria(texto: string): number {
+  const digitos = texto.replace(/\D/g, '');
+  return digitos ? Number(digitos) / 100 : 0;
+}
+
 // --- Rótulos ----------------------------------------------------------------
 
 /**

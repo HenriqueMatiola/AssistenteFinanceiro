@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Minus, Plus, Power, Trash } from '@phosphor-icons/react';
 import {
   alternarRecorrencia,
   criarRecorrencia,
@@ -8,7 +9,13 @@ import {
   type Recorrencia,
   type TipoTransacao,
 } from '../api.ts';
-import { formatarDinheiro } from '../formato.ts';
+import {
+  formatarDinheiro,
+  formatarEntradaMonetaria,
+  numeroDaEntradaMonetaria,
+} from '../formato.ts';
+import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
+import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 
 // As mesmas sugestões da tela de Lançamentos: a categoria de uma recorrência é
 // a mesma coisa que a de um lançamento, e o gráfico do Dashboard agrupa por ela.
@@ -75,14 +82,27 @@ function Recorrencias() {
     setVersaoDaLista((n) => n + 1);
   }
 
+  function mudarDiaDoMes(diferenca: number) {
+    const diaAtual = Number(diaDoMes) || 1;
+    setDiaDoMes(String(Math.min(31, Math.max(1, diaAtual + diferenca))));
+  }
+
+  function digitarDiaDoMes(texto: string) {
+    const digitos = texto.replace(/\D/g, '');
+    if (!digitos) {
+      setDiaDoMes('');
+      return;
+    }
+    setDiaDoMes(String(Math.min(31, Math.max(1, Number(digitos)))));
+  }
+
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     setErroDoFormulario(null);
     setSalvando(true);
 
     try {
-      // O campo é texto para aceitar vírgula, como se escreve em português.
-      const valorNumerico = Number(valor.replace(',', '.'));
+      const valorNumerico = numeroDaEntradaMonetaria(valor);
 
       if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
         throw new Error('Informe um valor maior que zero.');
@@ -165,13 +185,14 @@ function Recorrencias() {
             </label>
 
             <label className="campo">
-              <span>Valor (R$)</span>
+              <span>Valor</span>
               <input
                 type="text"
-                inputMode="decimal"
-                placeholder="0,00"
+                inputMode="numeric"
+                placeholder="R$ 0,00"
                 value={valor}
-                onChange={(e) => setValor(e.target.value)}
+                onChange={(e) => setValor(formatarEntradaMonetaria(e.target.value))}
+                className="campo__dinheiro"
                 required
               />
             </label>
@@ -180,71 +201,90 @@ function Recorrencias() {
           <div className="linha-de-campos">
             <label className="campo">
               <span>Categoria</span>
-              <input
-                type="text"
-                list="categorias-recorrencia"
+              <CampoComSugestoes
+                valor={categoria}
+                aoMudar={setCategoria}
+                sugestoes={CATEGORIAS_SUGERIDAS}
                 placeholder="Ex: Moradia"
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-                required
+                rotuloAcessivel="Categoria da recorrência"
+                obrigatorio
               />
-              <datalist id="categorias-recorrencia">
-                {CATEGORIAS_SUGERIDAS.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
             </label>
 
             <label className="campo">
               <span>Tipo</span>
-              <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoTransacao)}>
-                <option value="GASTO">Gasto</option>
-                <option value="GANHO">Ganho</option>
-              </select>
+              <SelectPersonalizado<TipoTransacao>
+                valor={tipo}
+                aoMudar={setTipo}
+                rotuloAcessivel="Tipo da recorrência"
+                opcoes={[
+                  { valor: 'GASTO', rotulo: 'Gasto' },
+                  { valor: 'GANHO', rotulo: 'Ganho' },
+                ]}
+              />
             </label>
 
             <label className="campo">
               <span>Dia do mês</span>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={diaDoMes}
-                onChange={(e) => setDiaDoMes(e.target.value)}
-                required
-              />
+              <div className="controle-parcelas" role="group" aria-label="Dia do mês">
+                <button
+                  type="button"
+                  onClick={() => mudarDiaDoMes(-1)}
+                  disabled={(Number(diaDoMes) || 1) <= 1}
+                  aria-label="Diminuir dia do mês"
+                >
+                  <Minus weight="bold" aria-hidden="true" />
+                </button>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={diaDoMes}
+                  onChange={(e) => digitarDiaDoMes(e.target.value)}
+                  onBlur={() => {
+                    if (!diaDoMes) setDiaDoMes('1');
+                  }}
+                  aria-label="Dia do mês"
+                  required
+                />
+                <span className="controle-parcelas__sufixo">do mês</span>
+                <button
+                  type="button"
+                  onClick={() => mudarDiaDoMes(1)}
+                  disabled={(Number(diaDoMes) || 1) >= 31}
+                  aria-label="Aumentar dia do mês"
+                >
+                  <Plus weight="bold" aria-hidden="true" />
+                </button>
+              </div>
             </label>
           </div>
 
           <div className="linha-de-campos">
             <label className="campo">
               <span>Forma de pagamento</span>
-              <input
-                type="text"
-                list="formas-recorrencia"
+              <CampoComSugestoes
+                valor={formaDePagamento}
+                aoMudar={setFormaDePagamento}
+                sugestoes={FORMAS_SUGERIDAS}
                 placeholder="Ex: Cartão Nubank"
-                value={formaDePagamento}
-                onChange={(e) => setFormaDePagamento(e.target.value)}
+                rotuloAcessivel="Forma de pagamento da recorrência"
               />
-              <datalist id="formas-recorrencia">
-                {FORMAS_SUGERIDAS.map((f) => (
-                  <option key={f} value={f} />
-                ))}
-              </datalist>
             </label>
 
             {/* Fixo/variável só faz sentido para gasto. */}
             {tipo === 'GASTO' && (
               <label className="campo">
                 <span>Fixo ou variável</span>
-                <select
-                  value={classificacao}
-                  onChange={(e) => setClassificacao(e.target.value as ClassificacaoGasto | '')}
-                >
-                  <option value="">Não classificar</option>
-                  <option value="FIXO">Fixo</option>
-                  <option value="VARIAVEL">Variável</option>
-                </select>
+                <SelectPersonalizado<ClassificacaoGasto | ''>
+                  valor={classificacao}
+                  aoMudar={setClassificacao}
+                  rotuloAcessivel="Classificação da recorrência"
+                  opcoes={[
+                    { valor: '', rotulo: 'Não classificar' },
+                    { valor: 'FIXO', rotulo: 'Fixo' },
+                    { valor: 'VARIAVEL', rotulo: 'Variável' },
+                  ]}
+                />
               </label>
             )}
           </div>
@@ -309,16 +349,20 @@ function Recorrencias() {
                       <div className="acoes">
                         <button
                           type="button"
-                          className="botao--discreto"
+                          className={`botao--discreto botao--acao ${
+                            r.ativa ? 'botao--acao-reabrir' : 'botao--acao-concluir'
+                          }`}
                           onClick={() => aoAlternar(r)}
                         >
+                          <Power weight="bold" aria-hidden="true" />
                           {r.ativa ? 'Desligar' : 'Ligar'}
                         </button>
                         <button
                           type="button"
-                          className="botao--discreto botao--perigo"
+                          className="botao--discreto botao--perigo botao--acao botao--acao-excluir"
                           onClick={() => aoExcluir(r)}
                         >
+                          <Trash weight="bold" aria-hidden="true" />
                           Excluir
                         </button>
                       </div>

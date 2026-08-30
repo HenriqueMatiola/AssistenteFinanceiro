@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { buscarProjecao, type MesProjetado } from '../api.ts';
 import { formatarData, formatarDinheiro, formatarMes } from '../formato.ts';
+import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 
 // Quantos meses a tela oferece. Mais que 12 vira adivinhação: qualquer coisa
 // muda num ano.
@@ -55,16 +56,15 @@ function Projecao() {
       <section className="cartao">
         <label className="campo campo--sozinho">
           <span>Período</span>
-          <select
-            value={quantidadeDeMeses}
-            onChange={(e) => trocarPeriodo(Number(e.target.value))}
-          >
-            {OPCOES_DE_PERIODO.map((n) => (
-              <option key={n} value={n}>
-                Próximos {n} meses
-              </option>
-            ))}
-          </select>
+          <SelectPersonalizado<number>
+            valor={quantidadeDeMeses}
+            aoMudar={trocarPeriodo}
+            rotuloAcessivel="Período da projeção"
+            opcoes={OPCOES_DE_PERIODO.map((n) => ({
+              valor: n,
+              rotulo: `Próximos ${n} meses`,
+            }))}
+          />
         </label>
         <p className="explicacao">
           A projeção começa no mês que vem. O mês corrente fica com o Dashboard,
