@@ -260,8 +260,12 @@ function Login({ aoEntrar }: Props) {
 
           <p className="entrada__alternar">
             {criando ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
-            <button type="button" className="entrada__link" onClick={alternarModo}>
-              {criando ? 'Entrar' : 'Criar conta'}
+            <button
+              type="button"
+              className="entrada__link"
+              onClick={alternarModo}
+            >
+              <span>{criando ? 'Entrar' : 'Criar conta'}</span>
             </button>
           </p>
 
