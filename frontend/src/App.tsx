@@ -41,7 +41,7 @@ function App() {
     return <Login aoEntrar={setUsuario} />;
   }
 
-  return <AreaLogada usuario={usuario} aoSair={sair} />;
+  return <AreaLogada usuario={usuario} aoSair={sair} aoAtualizarUsuario={setUsuario} />;
 }
 
 export default App;

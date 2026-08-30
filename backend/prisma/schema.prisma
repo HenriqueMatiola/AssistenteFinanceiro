@@ -20,6 +20,14 @@ model Usuario {
   /// elas continuam entrando pelo nome de usuário.
   email     String?  @unique
 
+  /// Foto de perfil como data URI ("data:image/jpeg;base64,…").
+  ///
+  /// Guardada na própria linha, e não em disco: o app roda numa máquina só,
+  /// e um arquivo à parte exigiria pasta de uploads, rota que serve estático
+  /// e faxina de órfãos. O navegador reduz a imagem para 256px antes de
+  /// enviar, então cada foto fica na casa das dezenas de KB.
+  foto      String?  @db.Text
+
   senhaHash String   @map("senha_hash")
   criadoEm  DateTime @default(now()) @map("criado_em")
 

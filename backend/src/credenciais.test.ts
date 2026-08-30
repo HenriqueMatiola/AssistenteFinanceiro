@@ -6,6 +6,7 @@ import {
   validarSenha,
   normalizarIdentificador,
   nomeDeExibicao,
+  validarNomeDeExibicao,
 } from './credenciais.ts';
 import { ErroDeValidacao } from './validacao.ts';
 
@@ -78,4 +79,23 @@ test('identificador é normalizado, mas não validado: texto estranho só não a
 test('nome de exibição sobe a primeira letra do nome de usuário', () => {
   assert.equal(nomeDeExibicao('henrique'), 'Henrique');
   assert.equal(nomeDeExibicao('pai.matiola'), 'Pai.matiola');
+});
+
+test('nome de exibição aceita acento, espaço e maiúscula — não é chave de acesso', () => {
+  assert.equal(validarNomeDeExibicao('  João Matiola  '), 'João Matiola');
+});
+
+test('nome de exibição junta espaços repetidos', () => {
+  assert.equal(validarNomeDeExibicao('Henrique   Matiola'), 'Henrique Matiola');
+});
+
+test('nome de exibição recusa vazio e só espaços', () => {
+  assert.throws(() => validarNomeDeExibicao(''), ErroDeValidacao);
+  assert.throws(() => validarNomeDeExibicao('    '), ErroDeValidacao);
+  assert.throws(() => validarNomeDeExibicao(null), ErroDeValidacao);
+});
+
+test('nome de exibição recusa acima de 40 caracteres', () => {
+  assert.equal(validarNomeDeExibicao('a'.repeat(40)), 'a'.repeat(40));
+  assert.throws(() => validarNomeDeExibicao('a'.repeat(41)), ErroDeValidacao);
 });

@@ -97,41 +97,58 @@
   font-weight: 500;
 }
 
-.lateral__rodape {
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid var(--petroleo-700);
-}
+/* --- Quem está conectado ---
+   Vive na barra superior, sobre fundo claro — e não mais no rodapé da
+   lateral, sobre petróleo. Por isso as cores vêm dos tokens de texto. */
 
 .usuario {
+  /* Empurra o bloco para a direita da barra. Funciona igual nas abas sem
+     trilha, em que ele é o único item da linha. */
+  margin-left: auto;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.4rem 0.6rem 0.7rem;
+  gap: 0.6rem;
 }
 
-.usuario__iniciais {
+/*
+ * O rosto da conta, na barra e na tela de Perfil: a foto quando existe, as
+ * iniciais quando não. O mesmo círculo nos dois casos, para trocar a foto não
+ * mexer no desenho da barra.
+ */
+.avatar {
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  /* `cover` recorta o excesso em vez de deformar — a imagem já chega quadrada
+     do navegador, mas isto protege qualquer foto vinda por outro caminho. */
+  object-fit: cover;
+  background: var(--superficie-2);
+}
+
+/* Sem foto, o círculo vira o único ponto de petróleo na barra: ancora a
+   identidade num topo que, fora ele, é todo branco. */
+.avatar--iniciais {
   display: grid;
   place-items: center;
-  border-radius: 50%;
   background: var(--petroleo-600);
   color: #fff;
   font-family: var(--fonte-display);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.usuario__dados {
-  min-width: 0;
+.avatar--grande {
+  width: 88px;
+  height: 88px;
+  font-size: 2rem;
 }
 
 .usuario__nome {
-  display: block;
-  color: #fff;
+  max-width: 12rem;
+  color: var(--texto);
   font-size: 0.88rem;
   font-weight: 500;
   overflow: hidden;
@@ -139,31 +156,28 @@
   white-space: nowrap;
 }
 
-.usuario__login {
-  display: block;
-  font-size: 0.75rem;
-  opacity: 0.7;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* Sair é saída de emergência, não ação do dia: contorno discreto, do mesmo
+   feitio das setas de ano ao lado. */
 .botao-sair {
-  width: 100%;
   font: inherit;
-  font-size: 0.85rem;
-  padding: 0.45rem 0.7rem;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+  margin-left: 0.15rem;
   border-radius: var(--raio-pequeno);
-  border: 1px solid var(--petroleo-600);
-  background: transparent;
-  color: var(--petroleo-300);
+  border: 1px solid var(--borda);
+  background: var(--superficie);
+  color: var(--texto-suave);
   cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .botao-sair:hover {
-  background: var(--petroleo-800);
-  color: #fff;
+  background: var(--superficie-2);
+  border-color: var(--borda-forte);
+  color: var(--texto);
 }
 
 /* --- Área de conteúdo --- */
@@ -189,21 +203,45 @@
 }
 
 /* ==========================================================================
-   Trilha de meses
+   Barra superior
    ========================================================================== */
 
-/* Navegar o ano como uma régua, do jeito que se navega uma planilha. Fica
-   colada no topo porque a pergunta "qual mês?" acompanha toda a rolagem. */
-.trilha {
+/*
+ * O topo de todas as abas: a trilha de meses à esquerda quando a tela usa
+ * mês, e quem está conectado sempre à direita.
+ *
+ * A barra é que fica colada no topo, e não mais a trilha — assim as abas sem
+ * mês também mantêm o usuário à vista durante a rolagem.
+ */
+.barra-superior {
   position: sticky;
   top: 0;
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.7rem 2rem;
+  gap: 1rem;
+  /* Altura declarada, e não herdada do conteúdo: a trilha é uns 3px mais alta
+     que o bloco do usuário sozinho, e sem isto a barra encolhia ao trocar
+     para uma aba sem mês. */
+  min-height: 3.75rem;
+  padding: 0.4rem 2rem;
   background: var(--superficie);
   border-bottom: 1px solid var(--borda);
+}
+
+/* ==========================================================================
+   Trilha de meses
+   ========================================================================== */
+
+/* Navegar o ano como uma régua, do jeito que se navega uma planilha.
+   `min-width: 0` deixa os meses rolarem dentro da barra em vez de empurrarem
+   o usuário para fora dela. */
+.trilha {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .trilha__ano {
@@ -659,6 +697,21 @@ form button[type='submit']:hover:not(:disabled) {
   margin: 0.6rem 0;
 }
 
+/* Confirmação de que algo foi gravado. Verde, a mesma cor que no resto do app
+   significa dinheiro entrando — aqui, "deu certo".
+   A caixa acompanha o texto em vez de atravessar o cartão: três palavras
+   ocupando a largura toda pesariam como um alarme. `fit-content`, e não
+   `inline-block`, senão o botão de salvar sobe para o lado dela. */
+.mensagem-ok {
+  width: fit-content;
+  font-size: 0.88rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--raio-pequeno);
+  border: 1px solid var(--entrada);
+  color: var(--entrada);
+  margin: 0.6rem 0;
+}
+
 .vazio {
   color: var(--texto-suave);
   font-size: 0.9rem;
@@ -694,6 +747,11 @@ form button[type='submit']:hover:not(:disabled) {
     align-items: center;
     gap: 1rem;
     padding: 0.6rem 1rem;
+    /* Item de grid não encolhe abaixo do próprio conteúdo por padrão, e as
+       seis abas somam mais que a largura de um celular: sem isto a lateral
+       estica a página inteira, e tudo à direita — o usuário na barra
+       inclusive — sai da tela. */
+    min-width: 0;
   }
 
   .lateral__marca {
@@ -727,36 +785,43 @@ form button[type='submit']:hover:not(:disabled) {
     border-bottom-color: var(--ambar-forte);
   }
 
-  .lateral__rodape {
-    margin-top: 0;
-    margin-left: auto;
-    padding-top: 0;
-    border-top: none;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-shrink: 0;
-  }
-
-  .usuario {
-    padding: 0;
-  }
-
-  /* O nome completo não cabe; as iniciais bastam para saber quem está logado. */
-  .usuario__dados {
-    display: none;
-  }
-
-  .botao-sair {
-    width: auto;
-  }
-
-  .trilha {
+  .barra-superior {
     padding: 0.6rem 1rem;
+    gap: 0.6rem;
+  }
+
+  /* Numa barra estreita disputada com doze meses, o nome é a primeira coisa
+     a ceder: as iniciais já dizem quem está conectado, e o nome inteiro
+     continua no `title`. */
+  .usuario__nome {
+    display: none;
   }
 
   .conteudo {
     padding: 1rem 1rem 3rem;
+  }
+}
+
+/*
+ * Numa tela de celular, os meses e o usuário não cabem na mesma linha: os doze
+ * botões ficariam espremidos em uns dois à vista. O usuário sobe para uma
+ * linha só dele, ainda à direita, e a trilha recupera a largura inteira.
+ */
+@media (max-width: 640px) {
+  .barra-superior {
+    flex-wrap: wrap;
+    /* A altura fixa vale para uma linha; com duas, o conteúdo é que manda. */
+    min-height: 0;
+    row-gap: 0.15rem;
+    padding: 0.35rem 1rem;
+  }
+
+  .usuario {
+    order: -1;
+  }
+
+  .trilha {
+    flex-basis: 100%;
   }
 }
 
@@ -927,39 +992,102 @@ form button[type='submit']:hover:not(:disabled) {
   }
 }
 
-/* --- Glossário (tela Início) --- */
+/* ==========================================================================
+   Perfil
+   ========================================================================== */
 
-.glossario {
-  margin: 0;
+/* A foto e seus botões ficam lado a lado, acima dos campos: é o primeiro
+   bloco da tela porque é a única parte que não se resolve digitando. */
+.perfil__foto {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding-bottom: 1.25rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--borda);
+}
+
+.perfil__foto-acoes {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
-.glossario__item {
-  display: grid;
-  grid-template-columns: 150px 1fr;
-  gap: 1rem;
-  align-items: baseline;
+.perfil__foto-botoes {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.glossario__termo {
-  font-family: var(--fonte-display);
-  font-weight: 600;
-  font-size: 0.92rem;
-}
-
-.glossario__descricao {
-  margin: 0;
+.perfil__dica {
+  font-size: 0.8rem;
+  line-height: 1.45;
   color: var(--texto-suave);
-  font-size: 0.9rem;
+  margin: 0;
+}
+
+/*
+ * Escolher arquivo é um <input type="file">, que não se estiliza. A saída é
+ * esconder o input e vestir o <label> de botão — o clique no rótulo abre o
+ * seletor de arquivos de graça, sem uma linha de JavaScript.
+ */
+.botao-arquivo {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.92rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--raio-pequeno);
+  border: 1px solid var(--borda-forte);
+  background: var(--superficie);
+  color: var(--texto);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.botao-arquivo:hover {
+  border-color: var(--petroleo-600);
+}
+
+/*
+ * O input some da vista, não do teclado: com `display: none` ele sairia da
+ * ordem de foco e o botão viraria inalcançável por Tab. Escondido assim, o
+ * foco continua chegando nele — e o `:focus-within` abaixo mostra onde está.
+ */
+.botao-arquivo input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.botao-arquivo:focus-within {
+  outline: 2px solid var(--ambar-forte);
+  outline-offset: 2px;
+}
+
+/* O nome de usuário é mostrado, mas não se edita: o campo precisa parecer
+   informação, e não um campo que você tentou preencher e não obedeceu. */
+.campo input[readonly] {
+  background: var(--superficie-2);
+  color: var(--texto-suave);
+  cursor: default;
+}
+
+.campo input[readonly]:hover {
+  border-color: var(--borda);
 }
 
 @media (max-width: 640px) {
-  /* Em coluna estreita, 150px para o nome deixariam a frase espremida. */
-  .glossario__item {
-    grid-template-columns: 1fr;
-    gap: 0.1rem;
+  /* Em coluna estreita, a foto ao lado dos botões deixa cada um com metade
+     do espaço; empilhados, os dois respiram. */
+  .perfil__foto {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

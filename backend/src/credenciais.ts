@@ -104,8 +104,38 @@ export function normalizarIdentificador(bruto: string): string {
  * Nome de exibição a partir do nome de usuário, para o cabeçalho do app.
  *
  * O cadastro pede três campos, e não quatro: quem entra como `henrique` aparece
- * como "Henrique" no topo da tela, em vez de em minúsculas.
+ * como "Henrique" no topo da tela, em vez de em minúsculas. Depois dá para
+ * trocar pelo nome de verdade na tela de Perfil.
  */
 export function nomeDeExibicao(login: string): string {
   return login.charAt(0).toUpperCase() + login.slice(1);
+}
+
+/** Além disto o nome não cabe na barra superior nem no crachá do perfil. */
+const MAXIMO_NOME = 40;
+
+/**
+ * Confere o nome que aparece no topo do app.
+ *
+ * Aqui vale acento, espaço e maiúscula à vontade — ao contrário do nome de
+ * usuário, este campo não é chave de acesso, é como a pessoa se chama.
+ */
+export function validarNomeDeExibicao(bruto: unknown): string {
+  if (typeof bruto !== 'string') {
+    throw new ErroDeValidacao('Informe um nome.');
+  }
+
+  // Espaços repetidos no meio viram um só: "Henrique   Matiola" desenharia um
+  // buraco na barra superior.
+  const nome = bruto.trim().replace(/\s+/g, ' ');
+
+  if (!nome) {
+    throw new ErroDeValidacao('O nome não pode ficar vazio.');
+  }
+
+  if (nome.length > MAXIMO_NOME) {
+    throw new ErroDeValidacao(`O nome pode ter no máximo ${MAXIMO_NOME} caracteres.`);
+  }
+
+  return nome;
 }

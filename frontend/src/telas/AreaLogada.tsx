@@ -7,7 +7,8 @@ import Lancamentos from './Lancamentos.tsx';
 import Recorrencias from './Recorrencias.tsx';
 import Projecao from './Projecao.tsx';
 import Investimentos from './Investimentos.tsx';
-import Inicio from './Inicio.tsx';
+import Perfil from './Perfil.tsx';
+import Avatar from '../componentes/Avatar.tsx';
 
 // Navegação por estado. Com seis telas, já vale trocar por um roteador de
 // verdade, para cada aba ter URL própria e o botão voltar funcionar.
@@ -17,7 +18,7 @@ type Aba =
   | 'projecao'
   | 'recorrencias'
   | 'investimentos'
-  | 'inicio';
+  | 'perfil';
 
 /**
  * `usaMes` diz se a tela trabalha com um mês específico. A trilha de meses só
@@ -30,23 +31,17 @@ const ABAS: { id: Aba; rotulo: string; usaMes: boolean }[] = [
   { id: 'projecao', rotulo: 'Projeção', usaMes: false },
   { id: 'recorrencias', rotulo: 'Recorrências', usaMes: false },
   { id: 'investimentos', rotulo: 'Investimentos', usaMes: false },
-  { id: 'inicio', rotulo: 'Início', usaMes: false },
+  { id: 'perfil', rotulo: 'Perfil', usaMes: false },
 ];
 
 interface Props {
   usuario: Usuario;
   aoSair: () => void;
+  /** A tela de Perfil devolve o usuário salvo por aqui, e a barra acompanha. */
+  aoAtualizarUsuario: (usuario: Usuario) => void;
 }
 
-/** "Henrique Matiola" → "HM". Duas letras cabem no círculo; três já não. */
-function iniciaisDe(nome: string): string {
-  const partes = nome.trim().split(/\s+/);
-  const primeira = partes[0]?.[0] ?? '?';
-  const ultima = partes.length > 1 ? partes.at(-1)?.[0] ?? '' : '';
-  return (primeira + ultima).toUpperCase();
-}
-
-function AreaLogada({ usuario, aoSair }: Props) {
+function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
   // Abre no Dashboard: é a visão que responde "como estou este mês?" sem
   // precisar de nenhum clique.
   const [aba, setAba] = useState<Aba>('dashboard');
@@ -79,25 +74,29 @@ function AreaLogada({ usuario, aoSair }: Props) {
           ))}
         </nav>
 
-        <div className="lateral__rodape">
-          <div className="usuario">
-            <span className="usuario__iniciais" aria-hidden="true">
-              {iniciaisDe(usuario.nome)}
-            </span>
-            <span className="usuario__dados">
-              <span className="usuario__nome">{usuario.nome}</span>
-              <span className="usuario__login">{usuario.login}</span>
-            </span>
-          </div>
-
-          <button type="button" className="botao-sair" onClick={aoSair}>
-            Sair
-          </button>
-        </div>
       </aside>
 
       <main className="area">
-        {abaAtual?.usaMes && <TrilhaDeMeses mes={mes} aoTrocar={setMes} />}
+        {/*
+          A barra existe em todas as abas, mesmo nas que não usam mês: é ela
+          que segura o usuário no canto direito. Se ele morasse dentro da
+          trilha, sumiria em Projeção, Recorrências, Investimentos e Início.
+        */}
+        <header className="barra-superior">
+          {abaAtual?.usaMes && <TrilhaDeMeses mes={mes} aoTrocar={setMes} />}
+
+          {/* O nome de usuário fica no `title`: numa barra de uma linha, uma
+              segunda linha de texto miúdo aperta tudo — e ele quase repete o
+              nome, que sai dele. */}
+          <div className="usuario" title={`${usuario.nome} — conectado como ${usuario.login}`}>
+            <Avatar nome={usuario.nome} foto={usuario.foto} />
+            <span className="usuario__nome">{usuario.nome}</span>
+
+            <button type="button" className="botao-sair" onClick={aoSair}>
+              Sair
+            </button>
+          </div>
+        </header>
 
         <div className="conteudo">
           <h1 className="titulo-da-tela">{abaAtual?.rotulo}</h1>
@@ -107,7 +106,7 @@ function AreaLogada({ usuario, aoSair }: Props) {
           {aba === 'projecao' && <Projecao />}
           {aba === 'recorrencias' && <Recorrencias />}
           {aba === 'investimentos' && <Investimentos />}
-          {aba === 'inicio' && <Inicio />}
+          {aba === 'perfil' && <Perfil usuario={usuario} aoAtualizar={aoAtualizarUsuario} />}
         </div>
       </main>
     </div>

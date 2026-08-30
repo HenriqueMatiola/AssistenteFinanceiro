@@ -14,6 +14,8 @@ export interface Usuario {
   login: string;
   /** Nulo nas contas criadas antes de o cadastro pedir e-mail. */
   email: string | null;
+  /** Data URI da foto de perfil. Nulo quando ainda não há foto. */
+  foto: string | null;
 }
 
 /** Erro vindo da API, carregando o código HTTP junto da mensagem. */
@@ -121,6 +123,34 @@ export async function criarConta(dados: {
 export async function buscarUsuarioLogado(): Promise<Usuario> {
   const resposta = await chamar<{ usuario: Usuario }>('/api/eu');
   return resposta.usuario;
+}
+
+// --- Perfil -----------------------------------------------------------------
+
+/**
+ * Muda o que veio, e só isso: mandar apenas `{ nome }` não apaga o e-mail.
+ * `foto: null` tira a foto e devolve as iniciais.
+ */
+export interface MudancasNoPerfil {
+  nome?: string;
+  email?: string;
+  foto?: string | null;
+}
+
+export async function atualizarPerfil(mudancas: MudancasNoPerfil): Promise<Usuario> {
+  const resposta = await chamar<{ usuario: Usuario }>('/api/perfil', {
+    method: 'PATCH',
+    body: JSON.stringify(mudancas),
+  });
+  return resposta.usuario;
+}
+
+/** A senha atual é exigida mesmo com sessão aberta — veja a rota. */
+export async function trocarSenha(senhaAtual: string, novaSenha: string): Promise<void> {
+  await chamar('/api/perfil/senha', {
+    method: 'PATCH',
+    body: JSON.stringify({ senhaAtual, novaSenha }),
+  });
 }
 
 // --- Transações -------------------------------------------------------------

@@ -17,6 +17,7 @@ import { rotasDeResumo } from './rotas/resumo.ts';
 import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
 import { rotasDeProjecao } from './rotas/projecao.ts';
 import { rotasDeInvestimentos } from './rotas/investimentos.ts';
+import { rotasDePerfil } from './rotas/perfil.ts';
 
 const app = express();
 
@@ -25,7 +26,11 @@ const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173' }));
 
 // Permite receber corpo de requisição em JSON.
-app.use(express.json());
+//
+// O limite sobe de 100 KB (padrão) para 1 MB por causa da foto de perfil: ela
+// viaja como data URI, e base64 engorda o arquivo em um terço. O teto de
+// verdade é o de `foto.ts`, que recusa imagem acima de 400 KB.
+app.use(express.json({ limit: '1mb' }));
 
 // Quanto maior, mais lento (de propósito) fica calcular o hash — o que atrapalha
 // quem tentar adivinhar senhas por força bruta. 10 é o padrão recomendado.
@@ -107,6 +112,7 @@ app.post('/api/login', async (req, res) => {
         nome: usuario.nome,
         login: usuario.login,
         email: usuario.email,
+        foto: usuario.foto,
       },
     });
   } catch (erro) {
@@ -150,7 +156,7 @@ app.post('/api/cadastro', async (req, res) => {
         email,
         senhaHash: await bcrypt.hash(senha, CUSTO_DO_HASH),
       },
-      select: { id: true, nome: true, login: true, email: true },
+      select: { id: true, nome: true, login: true, email: true, foto: true },
     });
 
     res.status(201).json({ token: gerarToken(usuario.id), usuario });
@@ -181,7 +187,7 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: req.usuarioId },
-      select: { id: true, nome: true, login: true, email: true, criadoEm: true },
+      select: { id: true, nome: true, login: true, email: true, foto: true, criadoEm: true },
     });
 
     if (!usuario) {
@@ -196,6 +202,9 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
     res.status(500).json({ erro: 'Erro interno.' });
   }
 });
+
+// Nome, e-mail, foto e troca de senha da própria conta.
+app.use('/api/perfil', exigirLogin, rotasDePerfil);
 
 // Lançamentos. O exigirLogin fica no grupo inteiro: nenhuma rota de
 // transação existe sem autenticação, nem por esquecimento.

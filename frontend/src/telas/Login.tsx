@@ -271,7 +271,6 @@ function Login({ aoEntrar }: Props) {
 
           {/* Fecha a coluna e responde à pergunta que um app compartilhado
               levanta — mais ainda na hora de abrir uma conta nova. */}
-          <p className="entrada__nota">Cada conta enxerga só os próprios lançamentos.</p>
         </div>
       </section>
     </main>
