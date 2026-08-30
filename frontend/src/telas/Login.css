@@ -364,8 +364,8 @@
   transition: transform 160ms ease;
 }
 
-/* Um brilho âmbar atravessa o botão ao passar o mouse — o único gesto
-   decorativo da tela, e o que confirma que ela está viva. */
+/* Um brilho âmbar atravessa o botão ao passar o mouse — o gesto que confirma
+   que a tela está viva, e o mesmo que os botões de confirmar do app usam. */
 .entrada__botao::before {
   content: '';
   position: absolute;
@@ -373,7 +373,7 @@
   background: linear-gradient(
     100deg,
     transparent 20%,
-    rgba(201, 122, 22, 0.5) 50%,
+    var(--ambar-halo) 50%,
     transparent 80%
   );
   transform: translateX(-100%);
@@ -397,9 +397,39 @@
   transform: translateY(1px);
 }
 
+/* Enquanto o pedido está no ar, o brilho passa a dar voltas. É o mesmo gesto
+   do hover em outra função: ali promete, aqui informa. */
 .entrada__botao:disabled {
-  opacity: 0.65;
+  opacity: 0.8;
   cursor: default;
+}
+
+.entrada__botao:disabled::before {
+  animation: brilho-em-curso 1400ms linear infinite;
+}
+
+@keyframes brilho-em-curso {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Sem movimento, quem conta o que está acontecendo é o rótulo. */
+@media (prefers-reduced-motion: reduce) {
+  .entrada__botao::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* O mesmo anel dos botões do app: um traço âmbar mais grosso, separado do
+   botão por uma folga que deixa o papel aparecer. */
+.entrada__botao:focus-visible {
+  outline: 3px solid var(--ambar-forte);
+  outline-offset: 2px;
 }
 
 .entrada__erro {

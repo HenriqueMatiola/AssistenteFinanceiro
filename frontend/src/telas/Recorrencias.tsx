@@ -316,7 +316,7 @@ function Recorrencias() {
                         </button>
                         <button
                           type="button"
-                          className="botao--discreto"
+                          className="botao--discreto botao--perigo"
                           onClick={() => aoExcluir(r)}
                         >
                           Excluir

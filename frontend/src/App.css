@@ -42,6 +42,7 @@
   align-items: baseline;
   gap: 0.5rem;
   padding: 0.25rem 0.6rem 1.5rem;
+  animation: lateral-marca-entra 420ms var(--sai) both;
 }
 
 .lateral__marca-nome {
@@ -60,41 +61,192 @@
   opacity: 0.75;
 }
 
+/* --- Navegação: o trilho ---
+   As seis seções são uma coluna com uma linha de margem ao lado, como a
+   margem de um livro razão. A seção aberta não acende uma borda própria: um
+   único marcador âmbar corre por essa linha e para na altura dela. Assim a
+   barra mostra o caminho entre onde você estava e onde está. */
 .lateral__nav {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--nav-item-espaco);
+  /* Abre a faixa em que o trilho e o marcador vivem, à esquerda dos itens. */
+  padding-left: var(--nav-trilho);
+}
+
+.lateral__nav::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--petroleo-700);
+  transform-origin: top;
+  animation: lateral-trilho-desce 520ms var(--sai) both;
+}
+
+/* O marcador. `--ordem` chega do React com o índice da seção aberta, e a
+   conta abaixo o leva até a altura dela — sem medir nada no navegador. */
+.lateral__marcador {
+  position: absolute;
+  left: -1px;
+  top: calc((var(--nav-item-altura) - 1.35rem) / 2);
+  width: 3px;
+  height: 1.35rem;
+  border-radius: 2px;
+  background: var(--ambar-forte);
+  box-shadow: 0 0 10px var(--ambar-halo);
+  transform: translateY(
+    calc(var(--ordem, 0) * (var(--nav-item-altura) + var(--nav-item-espaco)))
+  );
+  transition: transform 420ms var(--assenta);
+  /* Acende depois que os itens terminam de entrar. */
+  animation: lateral-marcador-acende 360ms ease-out 300ms both;
 }
 
 .lateral__item {
-  display: block;
+  position: relative;
+  /* Prende o fundo do hover atrás do rótulo sem soltá-lo na página. */
+  isolation: isolate;
+  display: flex;
+  align-items: center;
   width: 100%;
-  text-align: left;
-  font: inherit;
-  font-size: 0.92rem;
-  padding: 0.6rem 0.7rem;
+  height: var(--nav-item-altura);
+  padding: 0 0.7rem;
   border: none;
-  border-left: 3px solid transparent;
   border-radius: var(--raio-pequeno);
   background: transparent;
   color: var(--petroleo-300);
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
   cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
+  transition: color 160ms ease;
+  animation: lateral-item-entra 320ms var(--sai) both;
+  animation-delay: calc(var(--ordem) * 45ms);
 }
 
-.lateral__item:hover {
+/* O fundo do hover cresce a partir do trilho, e não do meio: o movimento
+   sempre nasce na linha de margem. */
+.lateral__item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
   background: var(--petroleo-800);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 240ms var(--sai), background-color 160ms ease;
+}
+
+/* O tique: no trilho, na altura do item sob o cursor, diz de véspera onde o
+   marcador iria parar. */
+.lateral__item::after {
+  content: '';
+  position: absolute;
+  left: calc(-1px - var(--nav-trilho));
+  top: calc((var(--nav-item-altura) - 0.8rem) / 2);
+  width: 3px;
+  height: 0.8rem;
+  border-radius: 2px;
+  background: var(--petroleo-600);
+  transform: scaleY(0);
+  transition: transform 200ms var(--sai);
+}
+
+.lateral__item:hover,
+.lateral__item:focus-visible {
   color: #fff;
 }
 
-/* A aba aberta ganha a marca âmbar à esquerda — a mesma cor que, no
-   conteúdo, significa "pendente". Aqui ela diz "você está aqui". */
-.lateral__item--ativo,
-.lateral__item--ativo:hover {
+.lateral__item:hover::before,
+.lateral__item:focus-visible::before {
+  transform: scaleX(1);
+}
+
+.lateral__item:hover::after,
+.lateral__item:focus-visible::after {
+  transform: scaleY(1);
+}
+
+/* Sob o cursor, o rótulo anda três pixels na direção do trilho e volta. Só
+   enquanto o cursor está lá: parado, os seis rótulos alinham na mesma
+   coluna, e um deles fora do prumo pareceria defeito. */
+.lateral__item-rotulo {
+  transition: transform 240ms var(--sai);
+}
+
+.lateral__item:hover .lateral__item-rotulo,
+.lateral__item:focus-visible .lateral__item-rotulo {
+  transform: translateX(3px);
+}
+
+.lateral__item:active::before {
   background: var(--petroleo-700);
-  border-left-color: var(--ambar-forte);
+}
+
+/* O anel de foco fica por dentro: por fora, com 4px de respiro entre itens,
+   ele encostaria no vizinho de cima. */
+.lateral__item:focus-visible {
+  outline: 2px solid var(--ambar-forte);
+  outline-offset: -2px;
+}
+
+/* A seção aberta fica só com o fundo firme e o texto branco. O âmbar dela é
+   o marcador no trilho, e não uma borda repetida em cada item. */
+.lateral__item--ativo {
   color: #fff;
-  font-weight: 500;
+}
+
+.lateral__item--ativo::before {
+  transform: scaleX(1);
+  background: var(--petroleo-700);
+}
+
+/* Onde o marcador está, o tique não tem o que anunciar. */
+.lateral__item--ativo::after {
+  opacity: 0;
+}
+
+@keyframes lateral-marca-entra {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes lateral-trilho-desce {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes lateral-item-entra {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes lateral-marcador-acende {
+  from {
+    opacity: 0;
+    box-shadow: 0 0 0 var(--ambar-halo);
+  }
+}
+
+/* Quem pediu menos movimento recebe a barra pronta: o marcador salta de
+   seção em seção, e nada entra deslizando. */
+@media (prefers-reduced-motion: reduce) {
+  .lateral__marca,
+  .lateral__nav::before,
+  .lateral__item,
+  .lateral__marcador {
+    animation: none;
+  }
 }
 
 /* --- Quem está conectado ---
@@ -169,15 +321,20 @@
   color: var(--texto-suave);
   cursor: pointer;
   transition:
-    background 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease;
+    background 160ms var(--sai),
+    border-color 160ms var(--sai),
+    color 160ms var(--sai),
+    transform 120ms var(--sai);
 }
 
 .botao-sair:hover {
   background: var(--superficie-2);
   border-color: var(--borda-forte);
   color: var(--texto);
+}
+
+.botao-sair:active {
+  transform: translateY(1px);
 }
 
 /* --- Área de conteúdo --- */
@@ -299,6 +456,10 @@
   background: var(--ambar-forte);
 }
 
+.trilha__mes:active {
+  transform: translateY(1px);
+}
+
 .trilha__navegacao {
   font: inherit;
   padding: 0.3rem 0.55rem;
@@ -308,11 +469,29 @@
   color: var(--texto-suave);
   cursor: pointer;
   line-height: 1;
+  transition:
+    border-color 160ms var(--sai),
+    color 160ms var(--sai),
+    transform 160ms var(--sai);
 }
 
 .trilha__navegacao:hover {
   border-color: var(--borda-forte);
   color: var(--texto);
+}
+
+/* Cada seta anda um pixel para o lado em que leva o calendário: o controle
+   mostra o que vai fazer antes de ser apertado. */
+.trilha__navegacao--antes:hover {
+  transform: translateX(-1px);
+}
+
+.trilha__navegacao--depois:hover {
+  transform: translateX(1px);
+}
+
+.trilha__navegacao:active {
+  transform: translateY(1px);
 }
 
 /* ==========================================================================
@@ -454,6 +633,22 @@
   flex: 0 1 190px;
 }
 
+/* --- Botões ---
+ *
+ * Três famílias, e cada uma responde de um jeito: o de contorno afunda, a
+ * ficha de linha encolhe, o de confirmar acende. Quem só muda de cor não
+ * parece um botão que foi apertado.
+ *
+ * O repouso é do `button` cru, de peso mínimo: qualquer classe o supera, e um
+ * botão novo em qualquer canto do app já nasce vestido. Os estados é que ficam
+ * escopados em `.conteudo` — a barra lateral e a trilha de meses respondem ao
+ * cursor por conta própria, e `button:hover` pesaria mais que as classes delas
+ * na cascata: a superfície clara daqui vazaria para dentro do petróleo.
+ *
+ * `:enabled` no lugar de `:not(:disabled)` não é gosto: os dois excluem o
+ * botão desligado, mas `:not()` herda o peso do que está dentro e viraria a
+ * ordem entre estas regras e as das fichas mais abaixo.
+ */
 button {
   font: inherit;
   font-size: 0.92rem;
@@ -463,20 +658,57 @@ button {
   background: var(--superficie);
   color: var(--texto);
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition:
+    background 160ms var(--sai),
+    border-color 160ms var(--sai),
+    color 160ms var(--sai),
+    transform 120ms var(--sai);
 }
 
-button:hover {
+/* Teclado e cursor veem a mesma coisa: quem chega por Tab não deve encontrar
+   um botão inerte com um anel em volta. Vale para toda a família abaixo. */
+.conteudo button:hover:enabled,
+.conteudo button:focus-visible:enabled {
+  background: var(--superficie-2);
   border-color: var(--petroleo-600);
 }
 
-button:disabled {
+/* Um pixel para baixo, no tempo do clique: é o que separa um botão apertado
+   de um botão que mudou de cor. */
+.conteudo button:active:enabled {
+  transform: translateY(1px);
+}
+
+.conteudo button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-/* O botão que conclui o formulário é o único preenchido da tela. */
-form button[type='submit'] {
+/* O anel dos botões é mais grosso que o do resto do app: botão é o que se
+   aperta, e a folga do `outline-offset` deixa o papel do cartão aparecer
+   entre ele e a borda. Um traço de verdade, e não uma sombra — sombra some no
+   modo de alto contraste do Windows. */
+.conteudo button:focus-visible,
+.botao-arquivo:focus-within,
+.botao-sair:focus-visible,
+.trilha__mes:focus-visible,
+.trilha__navegacao:focus-visible {
+  outline: 3px solid var(--ambar-forte);
+  outline-offset: 2px;
+}
+
+/* --- Confirmar ---
+   O botão que conclui o formulário é o único preenchido da tela.
+
+   Este é o único da família que precisa de escopo já no repouso: sem ele,
+   `form button[type='submit']` (0,1,2) pesa mais que `.entrada__botao`
+   (0,1,0) e vestia de petróleo o botão da tela de entrada, que tem desenho
+   próprio. */
+.conteudo form button[type='submit'] {
+  position: relative;
+  /* Prende o brilho atrás do rótulo sem soltá-lo na página. */
+  isolation: isolate;
+  overflow: hidden;
   background: var(--petroleo-800);
   border-color: var(--petroleo-800);
   color: #fff;
@@ -484,11 +716,66 @@ form button[type='submit'] {
   margin-top: 0.35rem;
 }
 
-form button[type='submit']:hover:not(:disabled) {
+/* O mesmo brilho âmbar da tela de entrada — a família se reconhece. */
+.conteudo form button[type='submit']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--ambar-halo) 50%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  transition: transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.conteudo form button[type='submit']:hover:enabled,
+.conteudo form button[type='submit']:focus-visible:enabled {
   background: var(--petroleo-700);
   border-color: var(--petroleo-700);
 }
 
+.conteudo form button[type='submit']:hover:enabled::before {
+  transform: translateX(100%);
+}
+
+/* Salvando, o brilho passa a dar voltas: o gesto que era enfeite no hover
+   vira o sinal de que o pedido está em curso — junto com o rótulo, que já
+   troca para "Salvando…". Por isso o botão desligado aqui apaga menos que os
+   outros: ele não está fora do jogo, está trabalhando. */
+.conteudo form button[type='submit']:disabled {
+  opacity: 0.8;
+}
+
+.conteudo form button[type='submit']:disabled::before {
+  animation: brilho-em-curso 1400ms linear infinite;
+}
+
+@keyframes brilho-em-curso {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Sem movimento, o brilho não vira sinal nenhum: fica parado fora do botão, e
+   quem conta o que está acontecendo é o rótulo. */
+@media (prefers-reduced-motion: reduce) {
+  .conteudo form button[type='submit']::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* --- Ficha de linha ---
+   As ações que moram dentro da tabela. Ficam quietas até o cursor chegar, e
+   encolhem no clique em vez de afundar: são pequenas demais para um pixel
+   fazer diferença. */
 .botao--discreto {
   padding: 0.28rem 0.6rem;
   font-size: 0.82rem;
@@ -496,8 +783,29 @@ form button[type='submit']:hover:not(:disabled) {
   white-space: nowrap;
 }
 
-.botao--discreto:hover {
+.conteudo .botao--discreto:hover:enabled,
+.conteudo .botao--discreto:focus-visible:enabled {
+  background: var(--superficie-2);
+  border-color: var(--petroleo-600);
   color: var(--texto);
+}
+
+.conteudo .botao--discreto:active:enabled {
+  transform: scale(0.95);
+}
+
+/* Excluir apaga, e apagar não se desfaz. Sob o cursor ele assume a cor de
+   saída — a mesma dos valores que deixam a conta — e leva essa cor para o
+   anel de foco: quem chega por teclado vê a consequência antes de apertar. */
+.conteudo .botao--perigo:hover:enabled,
+.conteudo .botao--perigo:focus-visible:enabled {
+  background: var(--saida-fundo);
+  border-color: var(--saida);
+  color: var(--saida);
+}
+
+.conteudo .botao--perigo:focus-visible {
+  outline-color: var(--saida);
 }
 
 .acoes {
@@ -770,19 +1078,53 @@ form button[type='submit']:hover:not(:disabled) {
     overflow-x: auto;
     scrollbar-width: none;
     min-width: 0;
+    padding-left: 0;
+  }
+
+  /* Deitada, a faixa não tem margem para o trilho correr, e as seções têm
+     larguras diferentes — um marcador deslizante precisaria ser medido a
+     cada troca. Na horizontal ele vira um traço sob a seção aberta. */
+  .lateral__nav::before,
+  .lateral__marcador {
+    display: none;
   }
 
   .lateral__item {
-    border-left: none;
-    border-bottom: 3px solid transparent;
+    height: auto;
     white-space: nowrap;
-    padding: 0.45rem 0.7rem;
+    padding: 0.45rem 0.7rem 0.55rem;
   }
 
-  .lateral__item--ativo,
-  .lateral__item--ativo:hover {
-    border-left-color: transparent;
-    border-bottom-color: var(--ambar-forte);
+  .lateral__item::after {
+    left: 0.7rem;
+    right: 0.7rem;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    height: 2px;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 240ms var(--sai);
+  }
+
+  .lateral__item:hover::after,
+  .lateral__item:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  .lateral__item--ativo::after {
+    opacity: 1;
+    background: var(--ambar-forte);
+    box-shadow: 0 0 10px var(--ambar-halo);
+    transform: scaleX(1);
+  }
+
+  /* Sem trilho, o rótulo não tem para onde ser puxado: aqui quem responde ao
+     cursor é o traço embaixo. */
+  .lateral__item-rotulo,
+  .lateral__item:hover .lateral__item-rotulo,
+  .lateral__item:focus-visible .lateral__item-rotulo {
+    transform: none;
   }
 
   .barra-superior {
@@ -1044,12 +1386,18 @@ form button[type='submit']:hover:not(:disabled) {
   color: var(--texto);
   cursor: pointer;
   transition:
-    background 140ms ease,
-    border-color 140ms ease;
+    background 160ms var(--sai),
+    border-color 160ms var(--sai),
+    transform 120ms var(--sai);
 }
 
 .botao-arquivo:hover {
+  background: var(--superficie-2);
   border-color: var(--petroleo-600);
+}
+
+.botao-arquivo:active {
+  transform: translateY(1px);
 }
 
 /*
@@ -1063,11 +1411,6 @@ form button[type='submit']:hover:not(:disabled) {
   height: 1px;
   opacity: 0;
   pointer-events: none;
-}
-
-.botao-arquivo:focus-within {
-  outline: 2px solid var(--ambar-forte);
-  outline-offset: 2px;
 }
 
 /* O nome de usuário é mostrado, mas não se edita: o campo precisa parecer

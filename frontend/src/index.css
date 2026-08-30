@@ -26,6 +26,9 @@
   --ambar: #a05a0b;
   --ambar-forte: #c97a16;
   --ambar-fundo: #fbf0dc;
+  /* O halo do marcador da barra. Só acontece sobre petróleo, então é o mesmo
+     nos dois temas — quem muda é o âmbar por baixo dele. */
+  --ambar-halo: rgba(201, 122, 22, 0.5);
 
   /* --- Superfícies (tema claro) --- */
   --fundo: #eff3f2;
@@ -39,11 +42,28 @@
   /* --- Dinheiro --- */
   --entrada: #0f7a5a;
   --saida: #c0453c;
+  /* O fundo do "Excluir" sob o cursor: a cor de saída diluída até virar
+     superfície, do mesmo jeito que `--ambar-fundo` dilui o âmbar. */
+  --saida-fundo: #fbe9e7;
 
   /* --- Medidas --- */
   --raio: 10px;
   --raio-pequeno: 6px;
   --largura-lateral: 232px;
+
+  /* Navegação lateral. O marcador âmbar desliza calculando
+     `ordem x (altura + espaço)`, então estas três medidas precisam ser as
+     mesmas que os itens usam — por isso moram aqui, e não soltas no CSS. */
+  --nav-item-altura: 2.5rem;
+  --nav-item-espaco: 0.25rem;
+  --nav-trilho: 0.9rem;
+
+  /* --- Movimento ---
+     `--sai` para o que aparece: rápido no começo, macio no fim.
+     `--assenta` passa do ponto e volta, de leve — o marcador da barra
+     encaixa como um seletor mecânico, em vez de frear na régua. */
+  --sai: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --assenta: cubic-bezier(0.34, 1.28, 0.64, 1);
 
   /* --- Tipografia ---
      Três papéis: display para títulos e números grandes, corpo para a
@@ -74,6 +94,8 @@
     --ambar: #e8a33d;
     --ambar-forte: #e8a33d;
     --ambar-fundo: #33260f;
+    --ambar-halo: rgba(232, 163, 61, 0.45);
+    --saida-fundo: #331a18;
     --mes-ativo: var(--petroleo-600);
   }
 }

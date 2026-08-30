@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { Usuario } from '../api.ts';
 import { mesAtualISO } from '../formato.ts';
 import TrilhaDeMeses from '../componentes/TrilhaDeMeses.tsx';
@@ -50,7 +51,11 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
   // devolver você para o mês corrente no meio de uma conferência.
   const [mes, setMes] = useState(mesAtualISO());
 
-  const abaAtual = ABAS.find((a) => a.id === aba);
+  // A ordem também posiciona o marcador no trilho da barra: o CSS multiplica
+  // ela pela altura do item, e assim não precisa medir nada no navegador a
+  // cada troca de seção.
+  const ordemDaAba = ABAS.findIndex((a) => a.id === aba);
+  const abaAtual = ABAS[ordemDaAba];
 
   return (
     <div className="aplicativo">
@@ -60,16 +65,25 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
           <span className="lateral__marca-sufixo">financeiro</span>
         </div>
 
-        <nav className="lateral__nav" aria-label="Seções">
-          {ABAS.map(({ id, rotulo }) => (
+        <nav
+          className="lateral__nav"
+          aria-label="Seções"
+          style={{ '--ordem': ordemDaAba } as CSSProperties}
+        >
+          {/* O marcador âmbar que corre pelo trilho. É decoração: quem conta
+              aos leitores de tela onde estamos é o `aria-current` abaixo. */}
+          <span className="lateral__marcador" aria-hidden="true" />
+
+          {ABAS.map(({ id, rotulo }, ordem) => (
             <button
               key={id}
               type="button"
               className={aba === id ? 'lateral__item lateral__item--ativo' : 'lateral__item'}
+              style={{ '--ordem': ordem } as CSSProperties}
               onClick={() => setAba(id)}
               aria-current={aba === id ? 'page' : undefined}
             >
-              {rotulo}
+              <span className="lateral__item-rotulo">{rotulo}</span>
             </button>
           ))}
         </nav>

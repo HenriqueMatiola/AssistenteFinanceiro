@@ -574,7 +574,7 @@ function Investimentos() {
                           <div className="acoes">
                             <button
                               type="button"
-                              className="botao--discreto"
+                              className="botao--discreto botao--perigo"
                               onClick={() => aoExcluir(o)}
                             >
                               Excluir

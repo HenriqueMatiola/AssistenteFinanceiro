@@ -49,7 +49,7 @@ function TrilhaDeMeses({ mes, aoTrocar }: Props) {
     <nav className="trilha" aria-label="Selecionar mês">
       <button
         type="button"
-        className="trilha__navegacao"
+        className="trilha__navegacao trilha__navegacao--antes"
         onClick={() => setAnoVisivel((a) => a - 1)}
         aria-label={`Ver ${anoVisivel - 1}`}
       >
@@ -83,7 +83,7 @@ function TrilhaDeMeses({ mes, aoTrocar }: Props) {
 
       <button
         type="button"
-        className="trilha__navegacao"
+        className="trilha__navegacao trilha__navegacao--depois"
         onClick={() => setAnoVisivel((a) => a + 1)}
         aria-label={`Ver ${anoVisivel + 1}`}
       >
