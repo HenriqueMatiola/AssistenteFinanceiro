@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { mesAtualISO } from '../formato.ts';
 
 /**
@@ -45,18 +46,48 @@ function TrilhaDeMeses({ mes, aoTrocar }: Props) {
 
   const mesDeHoje = mesAtualISO();
 
+  const botoesDosMeses = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function navegarPeloTeclado(evento: KeyboardEvent<HTMLButtonElement>, indice: number) {
+    let destino: number | undefined;
+
+    if (evento.key === 'ArrowLeft') destino = Math.max(0, indice - 1);
+    if (evento.key === 'ArrowRight') destino = Math.min(MESES.length - 1, indice + 1);
+    if (evento.key === 'Home') destino = 0;
+    if (evento.key === 'End') destino = MESES.length - 1;
+
+    if (destino === undefined) return;
+
+    evento.preventDefault();
+    botoesDosMeses.current[destino]?.focus();
+  }
+
   return (
     <nav className="trilha" aria-label="Selecionar mês">
-      <button
-        type="button"
-        className="trilha__navegacao trilha__navegacao--antes"
-        onClick={() => setAnoVisivel((a) => a - 1)}
-        aria-label={`Ver ${anoVisivel - 1}`}
-      >
-        ‹
-      </button>
+      <div className="trilha__controle-ano">
+        <button
+          type="button"
+          className="trilha__navegacao trilha__navegacao--antes"
+          onClick={() => setAnoVisivel((a) => a - 1)}
+          aria-label={`Ver ${anoVisivel - 1}`}
+        >
+          <CaretLeft weight="bold" aria-hidden="true" />
+        </button>
 
-      <span className="trilha__ano">{anoVisivel}</span>
+        <div className="trilha__ano" aria-live="polite">
+          <span className="trilha__ano-rotulo">Ano</span>
+          <strong key={anoVisivel}>{anoVisivel}</strong>
+        </div>
+
+        <button
+          type="button"
+          className="trilha__navegacao trilha__navegacao--depois"
+          onClick={() => setAnoVisivel((a) => a + 1)}
+          aria-label={`Ver ${anoVisivel + 1}`}
+        >
+          <CaretRight weight="bold" aria-hidden="true" />
+        </button>
+      </div>
 
       <div className="trilha__meses">
         {MESES.map((rotulo, indice) => {
@@ -73,22 +104,18 @@ function TrilhaDeMeses({ mes, aoTrocar }: Props) {
               type="button"
               className={classes.join(' ')}
               onClick={() => aoTrocar(valor)}
+              onKeyDown={(evento) => navegarPeloTeclado(evento, indice)}
+              ref={(elemento) => {
+                botoesDosMeses.current[indice] = elemento;
+              }}
               aria-current={ativo ? 'true' : undefined}
+              aria-label={`${rotulo} de ${anoVisivel}${valor === mesDeHoje ? ', mês atual' : ''}`}
             >
-              {rotulo}
+              <span>{rotulo}</span>
             </button>
           );
         })}
       </div>
-
-      <button
-        type="button"
-        className="trilha__navegacao trilha__navegacao--depois"
-        onClick={() => setAnoVisivel((a) => a + 1)}
-        aria-label={`Ver ${anoVisivel + 1}`}
-      >
-        ›
-      </button>
     </nav>
   );
 }

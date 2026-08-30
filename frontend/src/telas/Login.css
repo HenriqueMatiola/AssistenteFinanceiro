@@ -432,6 +432,68 @@
   outline-offset: 2px;
 }
 
+/* --- Entrar com o Google -------------------------------------------------- */
+
+/*
+ * A divisória. O traço não atravessa a palavra: são duas linhas, uma de cada
+ * lado, coladas pelo `gap` do flex — mais simples do que um traço só com um
+ * pedaço apagado por baixo do texto.
+ */
+.entrada__ou {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 1.5rem 0 1.1rem;
+  /* Miúda e espaçada, como o sufixo da marca e os rótulos do app: a palavra
+     aqui é etiqueta, não frase. */
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+
+.entrada__ou::before,
+.entrada__ou::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--borda);
+}
+
+/*
+ * O botão do Google é um iframe: ele traz a própria altura e o próprio
+ * desenho, e não obedece a cor, fonte nem raio daqui. O que este bloco faz é
+ * reservar o lugar dele e centralizá-lo — a largura em pixels quem calcula é
+ * o componente, medindo esta caixa.
+ */
+.entrada__google {
+  display: flex;
+  justify-content: center;
+  /* Enquanto o script do Google não responde, a caixa tem altura de botão:
+     sem isto o "Já tem conta?" abaixo pula quando ele chega. */
+  min-height: 44px;
+}
+
+/* O filho é criado pela biblioteca oficial. A sombra fica fora do iframe, sem
+   alterar marca, tipografia ou estados internos controlados pelo Google. */
+.entrada__google > div {
+  overflow: hidden;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(7, 28, 30, 0.12);
+  transition:
+    box-shadow 180ms var(--sai),
+    transform 180ms var(--sai);
+}
+
+.entrada__google > div:hover {
+  box-shadow: 0 10px 28px rgba(7, 28, 30, 0.17);
+  transform: translateY(-1px);
+}
+
+.entrada__google > div:active {
+  transform: translateY(0) scale(0.99);
+}
+
 .entrada__erro {
   font-size: 0.88rem;
   color: var(--saida);

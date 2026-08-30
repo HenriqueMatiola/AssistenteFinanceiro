@@ -192,48 +192,65 @@ function Perfil({ usuario, aoAtualizar }: Props) {
         </form>
       </section>
 
-      <section className="cartao">
-        <h2>Trocar senha</h2>
+      {/*
+        Quem entrou pelo Google nunca escolheu senha: o formulário abaixo não
+        teria o que pedir no campo "senha atual". No lugar dele, a explicação
+        de como esta conta entra — uma tela que some sem dizer por quê deixa a
+        pessoa procurando o que não existe.
+      */}
+      {!usuario.temSenha ? (
+        <section className="cartao">
+          <h2>Senha</h2>
 
-        <p className="explicacao">
-          A senha atual é pedida mesmo com você já conectado — assim ninguém que
-          encontre o computador destravado troca a sua senha.
-        </p>
+          <p className="explicacao">
+            Esta conta entra pelo Google, então ela não tem senha para trocar.
+            Continue usando o botão “Continuar com o Google” na tela de entrada.
+          </p>
+        </section>
+      ) : (
+        <section className="cartao">
+          <h2>Trocar senha</h2>
 
-        <form onSubmit={salvarSenha}>
-          <div className="linha-de-campos">
-            <label className="campo">
-              <span>Senha atual</span>
-              <input
-                type="password"
-                value={senhaAtual}
-                onChange={(e) => setSenhaAtual(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </label>
+          <p className="explicacao">
+            A senha atual é pedida mesmo com você já conectado — assim ninguém que
+            encontre o computador destravado troca a sua senha.
+          </p>
 
-            <label className="campo">
-              <span>Nova senha</span>
-              <input
-                type="password"
-                value={novaSenha}
-                onChange={(e) => setNovaSenha(e.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </label>
-          </div>
+          <form onSubmit={salvarSenha}>
+            <div className="linha-de-campos">
+              <label className="campo">
+                <span>Senha atual</span>
+                <input
+                  type="password"
+                  value={senhaAtual}
+                  onChange={(e) => setSenhaAtual(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
 
-          {erroDaSenha && <p className="mensagem-erro">{erroDaSenha}</p>}
-          {senhaTrocada && <p className="mensagem-ok">Senha trocada.</p>}
+              <label className="campo">
+                <span>Nova senha</span>
+                <input
+                  type="password"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+            </div>
 
-          <button type="submit" disabled={trocando}>
-            {trocando ? 'Trocando…' : 'Trocar senha'}
-          </button>
-        </form>
-      </section>
+            {erroDaSenha && <p className="mensagem-erro">{erroDaSenha}</p>}
+            {senhaTrocada && <p className="mensagem-ok">Senha trocada.</p>}
+
+            <button type="submit" disabled={trocando}>
+              {trocando ? 'Trocando…' : 'Trocar senha'}
+            </button>
+          </form>
+        </section>
+      )}
     </>
   );
 }

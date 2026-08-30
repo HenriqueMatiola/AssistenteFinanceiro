@@ -398,100 +398,201 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.7rem;
+}
+
+.trilha__controle-ano {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  min-height: 2.5rem;
+  padding: 0;
 }
 
 .trilha__ano {
   font-family: var(--fonte-display);
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--texto-suave);
-  min-width: 3.2rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.65rem;
+  min-height: 2.15rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  color: var(--texto);
+}
+
+.trilha__ano-rotulo {
+  font-family: var(--fonte-corpo);
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fintech-acento);
+}
+
+.trilha__ano strong {
+  font-size: 0.86rem;
+  font-weight: 630;
+  line-height: 1.35;
+  letter-spacing: 0.055em;
+  animation: trilha-ano-entra 220ms var(--sai);
+}
+
+@keyframes trilha-ano-entra {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .trilha__meses {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  gap: 0.15rem;
+  align-items: center;
+  gap: 0.1rem;
   overflow-x: auto;
   scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+  min-height: 2.5rem;
+  padding: 0;
 }
 
 .trilha__mes {
+  position: relative;
+  isolation: isolate;
+  flex: 1 0 3.15rem;
+  min-height: 2.15rem;
   font: inherit;
-  font-size: 0.8rem;
-  letter-spacing: 0.06em;
+  font-size: 0.71rem;
+  font-weight: 620;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  padding: 0.35rem 0.7rem;
-  border: none;
-  border-radius: var(--raio-pequeno);
+  padding: 0.42rem 0.65rem;
+  border: 0;
+  border-radius: 0.6rem;
   background: transparent;
   color: var(--texto-suave);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 140ms ease, color 140ms ease;
+  scroll-snap-align: center;
+  transition:
+    background 180ms var(--sai),
+    box-shadow 180ms var(--sai),
+    color 180ms var(--sai),
+    transform 180ms var(--assenta);
 }
 
-.trilha__mes:hover {
-  background: var(--superficie-2);
+.trilha__mes:hover:not(.trilha__mes--ativo) {
+  background: var(--fintech-acento-suave);
   color: var(--texto);
 }
 
 .trilha__mes--ativo,
 .trilha__mes--ativo:hover {
-  background: var(--mes-ativo);
-  color: #fff;
-  font-weight: 500;
+  background: var(--fintech-acento);
+  color: var(--petroleo-900);
+  font-weight: 750;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--fintech-acento) 18%, transparent);
+  animation: trilha-mes-selecionado 240ms var(--assenta);
+}
+
+@keyframes trilha-mes-selecionado {
+  0% {
+    transform: translateY(1px) scale(0.96);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* O mês corrente ganha um ponto: num ano inteiro de botões iguais, é a única
    referência de "hoje". */
 .trilha__mes--atual::after {
   content: '';
-  display: block;
+  position: absolute;
+  left: 50%;
+  bottom: 0.23rem;
   width: 4px;
   height: 4px;
-  margin: 2px auto 0;
   border-radius: 50%;
-  background: var(--ambar-forte);
+  background: var(--fintech-acento);
+  box-shadow: 0 0 0 3px var(--fintech-acento-suave);
+  transform: translateX(-50%);
+}
+
+.trilha__mes--ativo.trilha__mes--atual::after {
+  background: var(--petroleo-900);
+  box-shadow: none;
 }
 
 .trilha__mes:active {
-  transform: translateY(1px);
+  transform: translateY(0) scale(0.97);
 }
 
 .trilha__navegacao {
+  flex: 0 0 2.15rem;
+  width: 2.15rem;
+  height: 2.15rem;
+  display: inline-grid;
+  place-items: center;
   font: inherit;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--borda);
-  border-radius: var(--raio-pequeno);
-  background: var(--superficie);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.58rem;
+  background: transparent;
   color: var(--texto-suave);
   cursor: pointer;
-  line-height: 1;
   transition:
+    background 160ms var(--sai),
     border-color 160ms var(--sai),
+    box-shadow 160ms var(--sai),
     color 160ms var(--sai),
     transform 160ms var(--sai);
 }
 
+.trilha__navegacao svg {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 160ms var(--assenta);
+}
+
 .trilha__navegacao:hover {
-  border-color: var(--borda-forte);
-  color: var(--texto);
+  border-color: transparent;
+  background: var(--fintech-acento-suave);
+  color: var(--fintech-acento);
+  box-shadow: none;
 }
 
 /* Cada seta anda um pixel para o lado em que leva o calendário: o controle
    mostra o que vai fazer antes de ser apertado. */
 .trilha__navegacao--antes:hover {
-  transform: translateX(-1px);
+  transform: none;
+}
+
+.trilha__navegacao--antes:hover svg {
+  transform: translateX(-2px);
 }
 
 .trilha__navegacao--depois:hover {
-  transform: translateX(1px);
+  transform: none;
+}
+
+.trilha__navegacao--depois:hover svg {
+  transform: translateX(2px);
 }
 
 .trilha__navegacao:active {
-  transform: translateY(1px);
+  transform: translateY(0) scale(0.94);
 }
 
 /* ==========================================================================
@@ -1164,6 +1265,14 @@ button {
 
   .trilha {
     flex-basis: 100%;
+  }
+
+  .trilha__ano {
+    min-width: 3.4rem;
+  }
+
+  .trilha__ano-rotulo {
+    display: none;
   }
 }
 

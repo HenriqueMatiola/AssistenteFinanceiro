@@ -40,6 +40,36 @@ cd backend && npx prisma migrate dev && cd ..
 cd backend && npm run criar-usuario && cd ..
 ```
 
+### Passo 6 (opcional): entrar com o Google
+
+Sem isto o app funciona normalmente — o botão simplesmente não aparece na tela
+de entrada, e todo mundo entra com usuário e senha.
+
+1. Abra [console.cloud.google.com](https://console.cloud.google.com) e crie um
+   projeto (ou use um que já tenha).
+2. **APIs e Serviços → Tela de permissão OAuth**: escolha **Externo**, preencha
+   nome do app, e-mail de suporte e e-mail de contato. Enquanto o app estiver
+   em modo de teste, só os e-mails que você listar em **Usuários de teste**
+   conseguem entrar — inclua o seu.
+3. **APIs e Serviços → Credenciais → Criar credenciais → ID do cliente OAuth**,
+   tipo **Aplicativo da Web**. Em **Origens JavaScript autorizadas**, coloque
+   `http://localhost:5173` (e o endereço de produção, quando houver).
+   Não precisa preencher URIs de redirecionamento: o botão devolve o token
+   direto na página, sem redirecionar.
+4. Copie o **ID do cliente** para os DOIS arquivos, com o mesmo valor:
+
+   ```
+   backend/.env    GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+   frontend/.env   VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+   ```
+
+5. Reinicie backend e frontend. O Vite só lê o `.env` ao subir.
+
+O ID do cliente não é segredo: ele aparece no HTML da página. O que ele faz no
+backend é recusar tokens do Google emitidos para outro aplicativo. Já o
+**segredo do cliente**, que o Google mostra na mesma tela, este app não usa —
+não coloque ele em lugar nenhum.
+
 ## Rodando no dia a dia
 
 Precisa de **três coisas no ar**. O banco fica em segundo plano; backend e
@@ -82,6 +112,8 @@ Depois abra <http://localhost:5173> no navegador.
 | `GET /api/hello` | Mensagem de teste — prova que a API está no ar |
 | `GET /api/health` | Faz uma consulta real no PostgreSQL e informa se o banco respondeu |
 | `POST /api/login` | Recebe `{login, senha}` e devolve `{token, usuario}` |
+| `POST /api/cadastro` | Recebe `{login, email, senha}`, cria a conta e já devolve `{token, usuario}` |
+| `POST /api/auth/google` | Recebe `{credencial}` — o token assinado do botão do Google —, confere a assinatura com o Google e devolve `{token, usuario}`. Cria a conta na primeira vez. Responde 503 se `GOOGLE_CLIENT_ID` não estiver configurado |
 | `GET /api/eu` | **Protegida.** Devolve o usuário dono do token enviado em `Authorization: Bearer <token>` |
 | `GET /api/transacoes` | **Protegida.** Lista os lançamentos do usuário do token. Filtros opcionais: `?mes=2026-08` e `?tipo=GASTO` |
 | `POST /api/transacoes` | **Protegida.** Cria um lançamento. Com `parcelas: 12`, cria as 12 de uma vez; com `ehSobraDoMesAnterior: true`, o valor vira sobra em vez de entrada. Devolve sempre uma lista |
@@ -116,6 +148,26 @@ o aplica no banco.
 - **Datas de transação** usam o tipo `DATE` (sem hora) e trafegam como texto
   `"AAAA-MM-DD"`. Com hora e fuso, um lançamento pode pular de dia — e de mês.
 - **O dono de um registro sempre vem do token**, nunca do corpo da requisição.
+- **A credencial do Google é conferida no backend, com o Google.** O token que
+  o botão devolve chega pelo mesmo caminho que qualquer campo de formulário, e
+  um token inventado à mão chegaria igual. O backend confere a assinatura, a
+  validade e — o mais fácil de esquecer — se o token foi emitido para ESTE
+  aplicativo: sem essa última checagem, um token legítimo de qualquer outro
+  site serviria para entrar aqui.
+- **Entrar e criar conta com o Google são a mesma rota.** Quem clica no botão
+  espera estar dentro; se a conta é nova quem decide é o backend. Conta nova
+  ganha um nome de usuário derivado do e-mail (`maria.souza@gmail` vira
+  `maria.souza`), com número no fim se já estiver tomado.
+- **E-mail igual vincula as duas formas de entrar, em vez de duplicar a
+  conta.** Quem se cadastrou com senha e um dia clicou no botão do Google
+  continua na mesma conta, com os mesmos lançamentos, e passa a entrar pelos
+  dois caminhos. Isso só é seguro porque o token traz o e-mail já verificado
+  pelo Google — sem essa marca, o vínculo é recusado.
+- **Conta criada pelo Google não tem senha** (`senha_hash` é nulo). Tentar
+  entrar com senha nela recebe uma resposta que diz para usar o botão, em vez
+  da mensagem genérica que deixaria a pessoa tentando de novo; e a tela de
+  Perfil troca o "trocar senha" por uma explicação, com o backend recusando a
+  rota de qualquer jeito.
 - **O balanço soma lançamentos MAIS as recorrências ainda não lançadas.**
   Uma conta cadastrada como recorrência já pesa no mês antes de virar
   lançamento — senão um mês recém-começado pareceria vazio tendo aluguel e

@@ -16,6 +16,11 @@ export interface Usuario {
   email: string | null;
   /** Data URI da foto de perfil. Nulo quando ainda não há foto. */
   foto: string | null;
+  /**
+   * Falso em quem entra só pelo Google: a conta nunca escolheu senha. A tela
+   * de Perfil usa isto para não oferecer um "trocar senha" sem o que trocar.
+   */
+  temSenha: boolean;
 }
 
 /** Erro vindo da API, carregando o código HTTP junto da mensagem. */
@@ -101,6 +106,20 @@ export async function fazerLogin(identificador: string, senha: string): Promise<
   return chamar('/api/login', {
     method: 'POST',
     body: JSON.stringify({ login: identificador, senha }),
+  });
+}
+
+/**
+ * Entra com o Google — e cria a conta na primeira vez, sem passo separado.
+ *
+ * `credencial` é o token assinado que o botão do Google devolve. Ele vai
+ * inteiro para o backend, que confere a assinatura com o próprio Google: o
+ * que chega aqui no navegador não vale como prova de nada.
+ */
+export async function entrarComGoogle(credencial: string): Promise<Sessao> {
+  return chamar('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credencial }),
   });
 }
 

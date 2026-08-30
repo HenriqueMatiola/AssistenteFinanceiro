@@ -1,5 +1,12 @@
 import { useState, type CSSProperties, type FormEvent } from 'react';
-import { fazerLogin, criarConta, guardarToken, type Usuario } from '../api.ts';
+import {
+  fazerLogin,
+  criarConta,
+  entrarComGoogle,
+  guardarToken,
+  type Usuario,
+} from '../api.ts';
+import BotaoDoGoogle from '../componentes/BotaoDoGoogle.tsx';
 import './Login.css';
 
 /**
@@ -94,6 +101,28 @@ function Login({ aoEntrar }: Props) {
     setErro(null);
     setMostrarSenha(false);
     setModo(proximo);
+  }
+
+  /**
+   * Volta do botão do Google com a credencial assinada.
+   *
+   * Não há modo aqui: entrar e criar conta são o mesmo clique, e quem decide
+   * se a conta é nova é o backend, olhando o que já existe no banco.
+   */
+  async function aoVoltarDoGoogle(credencial: string) {
+    setErro(null);
+    setEnviando(true);
+
+    try {
+      const sessao = await entrarComGoogle(credencial);
+      guardarToken(sessao.token);
+      aoEntrar(sessao.usuario);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível entrar com o Google.');
+      setEnviando(false);
+    }
+    // Sem `finally`: quando dá certo, a tela inteira é trocada pelo app, e
+    // mexer no estado de um componente que está saindo não serve para nada.
   }
 
   async function aoEnviar(evento: FormEvent) {
@@ -257,6 +286,15 @@ function Login({ aoEntrar }: Props) {
               </span>
             </button>
           </form>
+
+          {/*
+            O botão do Google fica DEPOIS do formulário, e não antes: quem já
+            tem conta de senha aqui vem para digitá-la, e o caminho principal
+            de uma tela não se coloca embaixo de uma alternativa. Ele some
+            sozinho quando o app não tem o identificador do Google configurado
+            — e a linha do "ou" vai junto, dentro do componente.
+          */}
+          <BotaoDoGoogle aoReceberCredencial={aoVoltarDoGoogle} />
 
           <p className="entrada__alternar">
             {criando ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}

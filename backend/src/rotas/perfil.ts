@@ -12,17 +12,9 @@ import { idDoUsuarioLogado } from '../auth.ts';
 import { ErroDeValidacao } from '../validacao.ts';
 import { validarEmail, validarNomeDeExibicao, validarSenha } from '../credenciais.ts';
 import { validarFotoDePerfil } from '../foto.ts';
+import { CAMPOS_DO_USUARIO, paraUsuarioPublico } from '../usuarioPublico.ts';
 
 const CUSTO_DO_HASH = 10;
-
-/** O que o frontend recebe de volta. Nunca inclui o hash da senha. */
-const CAMPOS_PUBLICOS = {
-  id: true,
-  nome: true,
-  login: true,
-  email: true,
-  foto: true,
-} as const;
 
 export const rotasDePerfil = Router();
 
@@ -69,10 +61,10 @@ rotasDePerfil.patch('/', async (req, res) => {
     const usuario = await prisma.usuario.update({
       where: { id: usuarioId },
       data: dados,
-      select: CAMPOS_PUBLICOS,
+      select: CAMPOS_DO_USUARIO,
     });
 
-    res.json({ usuario });
+    res.json({ usuario: paraUsuarioPublico(usuario) });
   } catch (erro) {
     if (erro instanceof ErroDeValidacao) {
       res.status(400).json({ erro: erro.message });
@@ -109,6 +101,16 @@ rotasDePerfil.patch('/senha', async (req, res) => {
 
     if (!usuario) {
       res.status(401).json({ erro: 'Usuário não encontrado.' });
+      return;
+    }
+
+    // Conta criada pelo Google nunca escolheu senha: não há atual para
+    // conferir, e trocar por uma nova aqui seria criar, não trocar. A tela de
+    // Perfil já esconde o formulário nesse caso; isto fecha a porta de trás.
+    if (usuario.senhaHash === null) {
+      res.status(400).json({
+        erro: 'Esta conta entra pelo Google e não tem senha para trocar.',
+      });
       return;
     }
 

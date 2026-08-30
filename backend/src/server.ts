@@ -18,6 +18,12 @@ import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
 import { rotasDeProjecao } from './rotas/projecao.ts';
 import { rotasDeInvestimentos } from './rotas/investimentos.ts';
 import { rotasDePerfil } from './rotas/perfil.ts';
+import {
+  verificarCredencialDoGoogle,
+  candidatosDeLogin,
+  entrarComGoogleEstaConfigurado,
+} from './google.ts';
+import { CAMPOS_DO_USUARIO, paraUsuarioPublico } from './usuarioPublico.ts';
 
 const app = express();
 
@@ -98,6 +104,20 @@ app.post('/api/login', async (req, res) => {
 
     const senhaConfere = await bcrypt.compare(senha, usuario?.senhaHash ?? HASH_DESCARTAVEL);
 
+    /*
+     * Conta criada pelo Google não tem senha, e nenhuma senha digitada vai
+     * funcionar nela. Dizer isso é melhor do que deixar a pessoa tentar de
+     * novo até desistir — e não entrega nada de novo: o cadastro já responde
+     * "esse e-mail já está em uso" para quem quiser descobrir se a conta
+     * existe.
+     */
+    if (usuario && usuario.senhaHash === null) {
+      res.status(401).json({
+        erro: 'Esta conta entra pelo Google. Use o botão "Entrar com o Google".',
+      });
+      return;
+    }
+
     // Mesma mensagem para "não existe" e "senha errada": não entregamos de
     // graça a informação de quais contas existem.
     if (!usuario || !senhaConfere) {
@@ -107,13 +127,7 @@ app.post('/api/login', async (req, res) => {
 
     res.json({
       token: gerarToken(usuario.id),
-      usuario: {
-        id: usuario.id,
-        nome: usuario.nome,
-        login: usuario.login,
-        email: usuario.email,
-        foto: usuario.foto,
-      },
+      usuario: paraUsuarioPublico(usuario),
     });
   } catch (erro) {
     console.error('Falha no login:', erro);
@@ -156,10 +170,10 @@ app.post('/api/cadastro', async (req, res) => {
         email,
         senhaHash: await bcrypt.hash(senha, CUSTO_DO_HASH),
       },
-      select: { id: true, nome: true, login: true, email: true, foto: true },
+      select: CAMPOS_DO_USUARIO,
     });
 
-    res.status(201).json({ token: gerarToken(usuario.id), usuario });
+    res.status(201).json({ token: gerarToken(usuario.id), usuario: paraUsuarioPublico(usuario) });
   } catch (erro) {
     if (erro instanceof ErroDeValidacao) {
       res.status(400).json({ erro: erro.message });
@@ -178,6 +192,118 @@ app.post('/api/cadastro', async (req, res) => {
   }
 });
 
+/*
+ * Entrar com o Google — a mesma rota serve para entrar e para criar conta.
+ *
+ * Não são duas coisas diferentes do ponto de vista de quem usa: a pessoa
+ * escolhe a conta do Google e espera estar dentro. Quem decide se é a primeira
+ * vez é o backend, olhando o que já existe no banco.
+ *
+ * Três caminhos, nesta ordem:
+ *
+ *  1. Já entrou pelo Google antes  → acha pelo `googleId` e pronto.
+ *  2. Tem conta de senha com o mesmo e-mail → vincula as duas. É o que evita
+ *     a conta duplicada de quem se cadastrou com senha e um dia clicou no
+ *     botão do Google. Só é seguro porque o token traz o e-mail verificado.
+ *  3. Nada disso → conta nova, com um login inventado a partir do e-mail.
+ */
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    if (!entrarComGoogleEstaConfigurado()) {
+      res.status(503).json({
+        erro: 'Entrar com o Google não está configurado neste servidor.',
+      });
+      return;
+    }
+
+    const perfil = await verificarCredencialDoGoogle(
+      (req.body as { credencial?: unknown }).credencial
+    );
+
+    // 1. Quem já entrou pelo Google alguma vez.
+    const jaVinculado = await prisma.usuario.findUnique({
+      where: { googleId: perfil.googleId },
+      select: CAMPOS_DO_USUARIO,
+    });
+
+    if (jaVinculado) {
+      res.json({ token: gerarToken(jaVinculado.id), usuario: paraUsuarioPublico(jaVinculado) });
+      return;
+    }
+
+    // 2. Conta que já existia com esse e-mail: passa a aceitar os dois
+    //    caminhos de entrada, e a senha que ela tinha continua valendo.
+    const mesmoEmail = await prisma.usuario.findUnique({
+      where: { email: perfil.email },
+      select: { id: true },
+    });
+
+    if (mesmoEmail) {
+      const vinculado = await prisma.usuario.update({
+        where: { id: mesmoEmail.id },
+        data: { googleId: perfil.googleId },
+        select: CAMPOS_DO_USUARIO,
+      });
+
+      res.json({ token: gerarToken(vinculado.id), usuario: paraUsuarioPublico(vinculado) });
+      return;
+    }
+
+    // 3. Conta nova. O login não é escolhido por ninguém, então é preciso
+    //    achar um que ainda esteja livre.
+    const candidatos = candidatosDeLogin(perfil.email);
+
+    const ocupados = await prisma.usuario.findMany({
+      where: { login: { in: candidatos } },
+      select: { login: true },
+    });
+
+    const tomados = new Set(ocupados.map((u) => u.login));
+    const login = candidatos.find((c) => !tomados.has(c));
+
+    if (!login) {
+      // Todos os candidatos tomados. Improvável a ponto de não valer um
+      // caminho de recuperação: o último deles termina em seis dígitos do
+      // relógio. Tentar de novo gera outros.
+      res.status(409).json({ erro: 'Não consegui criar um nome de usuário. Tente de novo.' });
+      return;
+    }
+
+    const usuario = await prisma.usuario.create({
+      data: {
+        // O nome do Google é como a pessoa se chama; sem ele, o login serve.
+        // O corte em 40 é o mesmo limite do campo na tela de Perfil.
+        nome: perfil.nome ? perfil.nome.slice(0, 40) : nomeDeExibicao(login),
+        login,
+        email: perfil.email,
+        googleId: perfil.googleId,
+        // Sem senha: esta conta entra pelo Google. A tela de Perfil esconde
+        // o "trocar senha" quando não há uma.
+        senhaHash: null,
+      },
+      select: CAMPOS_DO_USUARIO,
+    });
+
+    res.status(201).json({ token: gerarToken(usuario.id), usuario: paraUsuarioPublico(usuario) });
+  } catch (erro) {
+    if (erro instanceof ErroDeValidacao) {
+      res.status(400).json({ erro: erro.message });
+      return;
+    }
+
+    // P2002 = índice UNIQUE violado. Aqui só acontece se duas abas entrarem
+    // no mesmo instante com a mesma conta: uma cria, a outra esbarra. Na
+    // segunda tentativa ela cai no caminho 1 e entra normalmente.
+    if (typeof erro === 'object' && erro !== null && 'code' in erro && erro.code === 'P2002') {
+      res.status(409).json({ erro: 'Entrada simultânea detectada. Tente de novo.' });
+      return;
+    }
+
+    console.error('Falha ao entrar com o Google:', erro);
+    res.status(500).json({ erro: 'Erro interno ao entrar com o Google.' });
+  }
+});
+
 // --- Rotas protegidas -------------------------------------------------------
 // Tudo abaixo exige um token válido. O middleware preenche req.usuarioId.
 
@@ -187,7 +313,7 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: req.usuarioId },
-      select: { id: true, nome: true, login: true, email: true, foto: true, criadoEm: true },
+      select: CAMPOS_DO_USUARIO,
     });
 
     if (!usuario) {
@@ -196,7 +322,7 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
       return;
     }
 
-    res.json({ usuario });
+    res.json({ usuario: paraUsuarioPublico(usuario) });
   } catch (erro) {
     console.error('Falha ao buscar o usuário:', erro);
     res.status(500).json({ erro: 'Erro interno.' });

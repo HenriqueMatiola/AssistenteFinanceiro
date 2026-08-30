@@ -28,7 +28,15 @@ model Usuario {
   /// enviar, então cada foto fica na casa das dezenas de KB.
   foto      String?  @db.Text
 
-  senhaHash String   @map("senha_hash")
+  /// Nulo em conta que entra só pelo Google: ela nunca escolheu uma senha.
+  /// Quem tem as duas coisas entra pelos dois caminhos.
+  senhaHash String?  @map("senha_hash")
+
+  /// O identificador da conta Google (o `sub` do ID token) — estável, e não
+  /// muda quando a pessoa troca o e-mail no Google. É por ele que a conta é
+  /// reconhecida no segundo login, e não pelo e-mail.
+  googleId  String?  @unique @map("google_id")
+
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   transacoes    Transacao[]

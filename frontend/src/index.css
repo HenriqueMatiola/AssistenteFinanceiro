@@ -16,6 +16,11 @@
   --petroleo-600: #17565a;
   --petroleo-300: #93c3c3;
 
+  /* Verde digital: seleção e confirmação na navegação de período. É mais
+     luminoso que o petróleo sem competir com as cores semânticas de dinheiro. */
+  --fintech-acento: #31d6aa;
+  --fintech-acento-suave: rgba(49, 214, 170, 0.16);
+
   /* Realce do mês aberto na trilha. No tema claro ele escurece; no escuro
      precisa clarear, senão o petróleo some contra a superfície. */
   --mes-ativo: var(--petroleo-800);
