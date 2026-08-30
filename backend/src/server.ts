@@ -213,6 +213,13 @@ app.use('/api/investimentos', exigirLogin, rotasDeInvestimentos);
 
 const porta = Number(process.env.PORT ?? 3001);
 
-app.listen(porta, () => {
-  console.log(`Backend rodando em http://localhost:${porta}`);
-});
+export default app;
+
+if (!process.env.VERCEL) {
+  const porta = Number(process.env.PORT ?? 3001);
+
+  app.listen(porta, () => {
+    console.log(`Backend rodando em http://localhost:${porta}`);
+  });
+}
+

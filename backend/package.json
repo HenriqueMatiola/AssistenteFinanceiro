@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
     "criar-usuario": "tsx src/scripts/criar-usuario.ts",
     "listar-usuarios": "tsx src/scripts/listar-usuarios.ts",
