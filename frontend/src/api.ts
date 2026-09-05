@@ -21,6 +21,11 @@ export interface Usuario {
    * de Perfil usa isto para não oferecer um "trocar senha" sem o que trocar.
    */
   temSenha: boolean;
+  /**
+   * Se a pessoa já digitou o código que mandamos para a caixa dela. Falso
+   * enquanto o e-mail é só um endereço que alguém escreveu num formulário.
+   */
+  emailVerificado: boolean;
 }
 
 /** Erro vindo da API, carregando o código HTTP junto da mensagem. */
@@ -163,6 +168,71 @@ export async function atualizarPerfil(mudancas: MudancasNoPerfil): Promise<Usuar
   });
   return resposta.usuario;
 }
+
+// --- Confirmação de e-mail --------------------------------------------------
+
+export interface CodigoEnviado {
+  /** Para a tela poder dizer "enviamos para fulano@…" e a pessoa notar o erro. */
+  email: string;
+  validadeEmMinutos: number;
+}
+
+/**
+ * Pede que o servidor sorteie um código e mande por e-mail.
+ *
+ * Pedir de novo cancela o código anterior. O backend recusa com 429 quem pede
+ * rápido demais, e manda junto quantos segundos faltam.
+ */
+export async function pedirCodigoDeEmail(): Promise<CodigoEnviado> {
+  return chamar('/api/email/codigo', { method: 'POST' });
+}
+
+/** Devolve o usuário já com `emailVerificado` verdadeiro. */
+export async function confirmarEmail(codigo: string): Promise<Usuario> {
+  const resposta = await chamar<{ usuario: Usuario }>('/api/email/confirmar', {
+    method: 'POST',
+    body: JSON.stringify({ codigo }),
+  });
+  return resposta.usuario;
+}
+
+// --- Esqueci minha senha ----------------------------------------------------
+
+export interface CodigoDeSenhaPedido {
+  /**
+   * A mesma frase para todo mundo, exista ou não a conta. O backend não conta
+   * se achou o e-mail — a tela também não deve inventar essa informação.
+   */
+  mensagem: string;
+  validadeEmMinutos: number;
+}
+
+/** Pede o código de recuperação. Não exige login: é para quem não consegue entrar. */
+export async function pedirCodigoDeSenha(email: string): Promise<CodigoDeSenhaPedido> {
+  return chamar('/api/senha/codigo', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Troca a senha usando o código, e já devolve a sessão pronta.
+ *
+ * O código morre no servidor assim que é usado: repetir a mesma chamada com
+ * ele não funciona de novo.
+ */
+export async function redefinirSenha(dados: {
+  email: string;
+  codigo: string;
+  novaSenha: string;
+}): Promise<Sessao> {
+  return chamar('/api/senha/redefinir', {
+    method: 'POST',
+    body: JSON.stringify(dados),
+  });
+}
+
+// --- Perfil (senha) ---------------------------------------------------------
 
 /** A senha atual é exigida mesmo com sessão aberta — veja a rota. */
 export async function trocarSenha(senhaAtual: string, novaSenha: string): Promise<void> {

@@ -37,6 +37,50 @@ model Usuario {
   /// reconhecida no segundo login, e não pelo e-mail.
   googleId  String?  @unique @map("google_id")
 
+  /// Quando a pessoa provou que a caixa de e-mail é dela, digitando o código
+  /// que mandamos para lá. Nulo enquanto não provou.
+  ///
+  /// Data em vez de booleano: o mesmo campo responde "está confirmado?" e
+  /// "desde quando?". Quem entra pelo Google já nasce com isto preenchido — o
+  /// `email_verified` do ID token é a prova, e ela vem de graça.
+  ///
+  /// Trocar o e-mail no Perfil zera este campo: ele sempre fala do endereço
+  /// que está na linha AGORA, e não do que estava antes.
+  emailVerificadoEm DateTime? @map("email_verificado_em")
+
+  /// O código de 6 dígitos que está valendo, guardado como hash — os dígitos
+  /// em si nunca ficam no banco. Um código por pessoa de cada vez: pedir outro
+  /// substitui este, que é justamente o que se espera de "reenviar".
+  codigoDeEmailHash String? @map("codigo_de_email_hash")
+
+  /// Depois disto o código não vale mais e é preciso pedir outro.
+  codigoDeEmailExpiraEm DateTime? @map("codigo_de_email_expira_em")
+
+  /// Quantos palpites errados já foram dados neste código. Sem um teto, seis
+  /// dígitos são só um milhão de combinações — um script acerta em minutos.
+  codigoDeEmailTentativas Int @default(0) @map("codigo_de_email_tentativas")
+
+  /// Quando o último código saiu. Segura o intervalo entre reenvios, para o
+  /// app não virar máquina de spam em nome do e-mail que envia.
+  codigoDeEmailEnviadoEm DateTime? @map("codigo_de_email_enviado_em")
+
+  /// O código de "esqueci minha senha", também guardado como hash.
+  ///
+  /// Colunas próprias, e não as do `codigoDeEmail` acima, de propósito: um
+  /// código pedido para confirmar o endereço não pode servir para trocar a
+  /// senha. São finalidades diferentes, e quem pede uma não está pedindo a
+  /// outra.
+  ///
+  /// Numa conta que entra só pelo Google, este é o caminho para ela GANHAR uma
+  /// senha: não há o que "recuperar", mas o e-mail prova quem é do mesmo jeito.
+  codigoDeSenhaHash String? @map("codigo_de_senha_hash")
+
+  codigoDeSenhaExpiraEm DateTime? @map("codigo_de_senha_expira_em")
+
+  codigoDeSenhaTentativas Int @default(0) @map("codigo_de_senha_tentativas")
+
+  codigoDeSenhaEnviadoEm DateTime? @map("codigo_de_senha_enviado_em")
+
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   transacoes    Transacao[]

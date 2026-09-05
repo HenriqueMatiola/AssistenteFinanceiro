@@ -1,8 +1,10 @@
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import {
   fazerLogin,
   criarConta,
   entrarComGoogle,
+  pedirCodigoDeSenha,
+  redefinirSenha,
   guardarToken,
   type Usuario,
 } from '../api.ts';
@@ -32,8 +34,15 @@ const MESES = [
   { sigla: 'dez', altura: 88 },
 ];
 
-/** Entrar numa conta que já existe, ou abrir uma nova. */
-type Modo = 'entrar' | 'criar';
+/**
+ * Entrar numa conta que já existe, abrir uma nova, ou recuperar o acesso de
+ * quem esqueceu a senha.
+ *
+ * Os três moram na mesma caixa, e não em telas separadas: quem errou a senha
+ * duas vezes está a um clique de recuperar, e volta no mesmo clique se lembrar
+ * dela no meio do caminho.
+ */
+type Modo = 'entrar' | 'criar' | 'recuperar';
 
 interface Props {
   /** Avisa o App de que a sessão começou, passando quem entrou. */
@@ -80,12 +89,48 @@ function Login({ aoEntrar }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
+  // --- Recuperação de senha ---
+  const [codigo, setCodigo] = useState('');
+
+  // Separa os dois momentos do modo recuperar: pedir o código e digitá-lo.
+  const [codigoPedido, setCodigoPedido] = useState(false);
+
+  // A resposta do servidor é sempre a mesma frase, exista a conta ou não —
+  // por isso ela é um aviso, e não uma confirmação de que o e-mail existe.
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  /** Segundos até poder pedir outro código. Só serve para explicar o botão. */
+  const [espera, setEspera] = useState(0);
+
   const criando = modo === 'criar';
+  const recuperando = modo === 'recuperar';
+
+  useEffect(() => {
+    if (espera <= 0) return;
+    const relogio = setTimeout(() => setEspera((s) => s - 1), 1000);
+    return () => clearTimeout(relogio);
+  }, [espera]);
 
   // O mês de hoje divide a régua: o que já passou é sólido, o que vem é
   // contorno. É a mesma distinção que o app inteiro faz entre o realizado e
   // o previsto.
   const mesDeHoje = new Date().getMonth();
+
+  /** Limpa o que não faz sentido carregar de um modo para o outro. */
+  function irPara(proximo: Modo) {
+    setErro(null);
+    setAviso(null);
+    setMostrarSenha(false);
+
+    // Sair da recuperação joga fora o código digitado: voltar depois começa do
+    // zero, e um código velho na tela só enganaria.
+    if (proximo !== 'recuperar') {
+      setCodigo('');
+      setCodigoPedido(false);
+    }
+
+    setModo(proximo);
+  }
 
   function alternarModo() {
     const proximo: Modo = criando ? 'entrar' : 'criar';
@@ -98,9 +143,41 @@ function Login({ aoEntrar }: Props) {
       setIdentificador('');
     }
 
+    irPara(proximo);
+  }
+
+  /**
+   * Vai para "esqueci minha senha" aproveitando o que já foi digitado: quem
+   * escreveu o e-mail no campo de entrar não precisa escrevê-lo de novo.
+   */
+  function esqueciASenha() {
+    if (!email && identificador.includes('@')) setEmail(identificador);
+    setSenha('');
+    irPara('recuperar');
+  }
+
+  /** Pede (ou repede) o código de recuperação. */
+  async function pedirCodigo() {
     setErro(null);
-    setMostrarSenha(false);
-    setModo(proximo);
+    setAviso(null);
+    setEnviando(true);
+
+    try {
+      // A validade vem do servidor: é lá que ela é decidida, e repeti-la aqui
+      // como número fixo criaria uma segunda verdade para desencontrar.
+      const { mensagem, validadeEmMinutos } = await pedirCodigoDeSenha(email);
+
+      setCodigoPedido(true);
+      setEspera(60);
+      setAviso(
+        `${mensagem} O código vale por ${validadeEmMinutos} minutos — ` +
+          'se não aparecer, olhe no spam.'
+      );
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não consegui enviar o código.');
+    } finally {
+      setEnviando(false);
+    }
   }
 
   /**
@@ -129,13 +206,23 @@ function Login({ aoEntrar }: Props) {
     // Sem isto, o navegador recarregaria a página ao enviar o formulário.
     evento.preventDefault();
 
+    // No modo recuperar, antes de ter pedido o código, enviar o formulário é
+    // pedir o código — e não redefinir coisa nenhuma.
+    if (recuperando && !codigoPedido) {
+      await pedirCodigo();
+      return;
+    }
+
     setErro(null);
+    setAviso(null);
     setEnviando(true);
 
     try {
-      const sessao = criando
-        ? await criarConta({ login: identificador, email, senha })
-        : await fazerLogin(identificador, senha);
+      const sessao = recuperando
+        ? await redefinirSenha({ email, codigo, novaSenha: senha })
+        : criando
+          ? await criarConta({ login: identificador, email, senha })
+          : await fazerLogin(identificador, senha);
 
       guardarToken(sessao.token);
       aoEntrar(sessao.usuario);
@@ -144,11 +231,28 @@ function Login({ aoEntrar }: Props) {
 
       // Numa entrada recusada a senha é a suspeita e sai do campo. Num
       // cadastro recusado o problema é o nome de usuário ou o e-mail —
-      // apagar a senha só faria digitar de novo à toa.
-      if (!criando) setSenha('');
+      // apagar a senha só faria digitar de novo à toa. Na recuperação, o
+      // suspeito é o código, e ele fica: quem errou um dígito quer corrigir
+      // aquele dígito, não recomeçar.
+      if (modo === 'entrar') setSenha('');
     } finally {
       setEnviando(false);
     }
+  }
+
+  /**
+   * O rótulo do botão principal — sete respostas para um botão só.
+   *
+   * Fora do JSX porque três ternários aninhados no meio da marcação viram um
+   * borrão que ninguém lê depois.
+   */
+  function textoDoBotao(): string {
+    if (recuperando) {
+      if (!codigoPedido) return enviando ? 'Enviando…' : 'Enviar código';
+      return enviando ? 'Salvando…' : 'Redefinir senha e entrar';
+    }
+    if (criando) return enviando ? 'Criando…' : 'Criar conta';
+    return enviando ? 'Entrando…' : 'Entrar';
   }
 
   return (
@@ -197,35 +301,50 @@ function Login({ aoEntrar }: Props) {
 
       <section className="entrada__acesso">
         <div className="entrada__caixa">
-          <h2 className="entrada__titulo">{criando ? 'Criar conta' : 'Entrar'}</h2>
+          <h2 className="entrada__titulo">
+            {recuperando ? 'Recuperar acesso' : criando ? 'Criar conta' : 'Entrar'}
+          </h2>
+
+          {recuperando && (
+            <p className="entrada__subtitulo">
+              {codigoPedido
+                ? 'Digite o código que chegou no seu e-mail e escolha a nova senha.'
+                : 'Informe o e-mail da conta. Enviamos um código de 6 dígitos ' +
+                  'para ele — quem abre a caixa é você, e é isso que prova quem é.'}
+            </p>
+          )}
 
           {/* Sem `noValidate`: a validação do próprio navegador barra o envio
               vazio e o e-mail malformado antes de gastar uma ida ao servidor,
               e já é acessível. */}
           <form onSubmit={aoEnviar} className="entrada__form">
-            <div className="campo-entrada campo-entrada--do-modo">
-              <label htmlFor="identificador">
-                {criando ? 'Nome de usuário' : 'Usuário ou e-mail'}
-              </label>
-              <div className="campo-entrada__linha">
-                <input
-                  id="identificador"
-                  type="text"
-                  value={identificador}
-                  onChange={(e) => setIdentificador(e.target.value)}
-                  autoComplete="username"
-                  autoFocus
-                  required
-                />
+            {/* O campo de usuário não existe na recuperação: lá o que
+                identifica a conta é o e-mail, que é para onde o código vai. */}
+            {!recuperando && (
+              <div className="campo-entrada campo-entrada--do-modo">
+                <label htmlFor="identificador">
+                  {criando ? 'Nome de usuário' : 'Usuário ou e-mail'}
+                </label>
+                <div className="campo-entrada__linha">
+                  <input
+                    id="identificador"
+                    type="text"
+                    value={identificador}
+                    onChange={(e) => setIdentificador(e.target.value)}
+                    autoComplete="username"
+                    autoFocus
+                    required
+                  />
+                </div>
+                {criando && (
+                  <p className="campo-entrada__dica">
+                    Letras sem acento, números, ponto e hífen.
+                  </p>
+                )}
               </div>
-              {criando && (
-                <p className="campo-entrada__dica">
-                  Letras sem acento, números, ponto e hífen.
-                </p>
-              )}
-            </div>
+            )}
 
-            {criando && (
+            {(criando || recuperando) && (
               <div className="campo-entrada campo-entrada--do-modo">
                 <label htmlFor="email">E-mail</label>
                 <div className="campo-entrada__linha">
@@ -235,22 +354,54 @@ function Login({ aoEntrar }: Props) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoComplete="email"
+                    /* Depois que o código sai, o e-mail vira só referência: o
+                       código foi feito para AQUELE endereço, e trocá-lo aqui
+                       daria um "código incorreto" sem explicação. */
+                    readOnly={recuperando && codigoPedido}
+                    autoFocus={recuperando && !codigoPedido}
                     required
                   />
                 </div>
               </div>
             )}
 
+            {recuperando && codigoPedido && (
+              <div className="campo-entrada campo-entrada--do-modo">
+                <label htmlFor="codigo">Código</label>
+                <div className="campo-entrada__linha">
+                  <input
+                    id="codigo"
+                    className="campo-entrada__codigo"
+                    type="text"
+                    value={codigo}
+                    onChange={(e) => setCodigo(e.target.value)}
+                    /* Teclado numérico no celular sem as setinhas do
+                       type="number", que ainda comeria o zero à esquerda. */
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="000000"
+                    maxLength={7}
+                    autoFocus
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Na recuperação a senha só entra em cena junto com o código:
+                pedi-la antes de o e-mail sair seria pedir para digitar uma
+                senha que talvez nunca chegue a valer. */}
+            {(!recuperando || codigoPedido) && (
             <div className="campo-entrada">
-              <label htmlFor="senha">Senha</label>
+              <label htmlFor="senha">{recuperando ? 'Nova senha' : 'Senha'}</label>
               <div className="campo-entrada__linha">
                 <input
                   id="senha"
                   type={mostrarSenha ? 'text' : 'password'}
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
-                  autoComplete={criando ? 'new-password' : 'current-password'}
-                  minLength={criando ? 8 : undefined}
+                  autoComplete={criando || recuperando ? 'new-password' : 'current-password'}
+                  minLength={criando || recuperando ? 8 : undefined}
                   required
                 />
                 {/* type="button" é obrigatório: dentro de um form, o padrão de
@@ -265,8 +416,21 @@ function Login({ aoEntrar }: Props) {
                   <IconeOlho riscado={mostrarSenha} />
                 </button>
               </div>
-              {criando && <p className="campo-entrada__dica">Pelo menos 8 caracteres.</p>}
+              {(criando || recuperando) && (
+                <p className="campo-entrada__dica">Pelo menos 8 caracteres.</p>
+              )}
             </div>
+            )}
+
+            {/* Fica logo abaixo da senha porque é ali que a dúvida aparece —
+                depois de tentar uma senha e ela não servir. */}
+            {modo === 'entrar' && (
+              <p className="entrada__esqueci">
+                <button type="button" className="entrada__link" onClick={esqueciASenha}>
+                  <span>Esqueceu sua senha?</span>
+                </button>
+              </p>
+            )}
 
             {erro && (
               <p className="entrada__erro" role="alert">
@@ -274,17 +438,32 @@ function Login({ aoEntrar }: Props) {
               </p>
             )}
 
+            {aviso && (
+              <p className="entrada__aviso" role="status">
+                {aviso}
+              </p>
+            )}
+
             <button type="submit" className="entrada__botao" disabled={enviando}>
-              <span>
-                {enviando
-                  ? criando
-                    ? 'Criando…'
-                    : 'Entrando…'
-                  : criando
-                    ? 'Criar conta'
-                    : 'Entrar'}
-              </span>
+              <span>{textoDoBotao()}</span>
             </button>
+
+            {/* O reenvio fica depois do botão principal: é a saída para quando
+                o e-mail não chega, não o caminho esperado. */}
+            {recuperando && codigoPedido && (
+              <p className="entrada__esqueci">
+                <button
+                  type="button"
+                  className="entrada__link"
+                  onClick={pedirCodigo}
+                  disabled={enviando || espera > 0}
+                >
+                  <span>
+                    {espera > 0 ? `Reenviar código em ${espera}s` : 'Reenviar código'}
+                  </span>
+                </button>
+              </p>
+            )}
           </form>
 
           {/*
@@ -297,14 +476,29 @@ function Login({ aoEntrar }: Props) {
           <BotaoDoGoogle aoReceberCredencial={aoVoltarDoGoogle} />
 
           <p className="entrada__alternar">
-            {criando ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
-            <button
-              type="button"
-              className="entrada__link"
-              onClick={alternarModo}
-            >
-              <span>{criando ? 'Entrar' : 'Criar conta'}</span>
-            </button>
+            {recuperando ? (
+              <>
+                Lembrou a senha?{' '}
+                <button
+                  type="button"
+                  className="entrada__link"
+                  onClick={() => irPara('entrar')}
+                >
+                  <span>Voltar para entrar</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {criando ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
+                <button
+                  type="button"
+                  className="entrada__link"
+                  onClick={alternarModo}
+                >
+                  <span>{criando ? 'Entrar' : 'Criar conta'}</span>
+                </button>
+              </>
+            )}
           </p>
 
           {/* Fecha a coluna e responde à pergunta que um app compartilhado

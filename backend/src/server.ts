@@ -18,6 +18,8 @@ import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
 import { rotasDeProjecao } from './rotas/projecao.ts';
 import { rotasDeInvestimentos } from './rotas/investimentos.ts';
 import { rotasDePerfil } from './rotas/perfil.ts';
+import { rotasDeConfirmacaoDeEmail } from './rotas/confirmacaoDeEmail.ts';
+import { rotasDeRecuperacaoDeSenha } from './rotas/recuperacaoDeSenha.ts';
 import {
   verificarCredencialDoGoogle,
   candidatosDeLogin,
@@ -241,7 +243,13 @@ app.post('/api/auth/google', async (req, res) => {
     if (mesmoEmail) {
       const vinculado = await prisma.usuario.update({
         where: { id: mesmoEmail.id },
-        data: { googleId: perfil.googleId },
+        data: {
+          googleId: perfil.googleId,
+          // O Google acabou de provar que esta caixa é da pessoa (o
+          // `email_verified` do token). Não faz sentido pedir um código para
+          // confirmar o que já está confirmado.
+          emailVerificadoEm: new Date(),
+        },
         select: CAMPOS_DO_USUARIO,
       });
 
@@ -277,6 +285,9 @@ app.post('/api/auth/google', async (req, res) => {
         login,
         email: perfil.email,
         googleId: perfil.googleId,
+        // Nasce confirmada: o token do Google só passa por `google.ts` se
+        // trouxer `email_verified`.
+        emailVerificadoEm: new Date(),
         // Sem senha: esta conta entra pelo Google. A tela de Perfil esconde
         // o "trocar senha" quando não há uma.
         senhaHash: null,
@@ -329,8 +340,17 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
   }
 });
 
+// "Esqueci minha senha". PÚBLICA de propósito: quem esqueceu a senha não tem
+// como fazer login para provar quem é — quem prova é o e-mail.
+app.use('/api/senha', rotasDeRecuperacaoDeSenha);
+
 // Nome, e-mail, foto e troca de senha da própria conta.
 app.use('/api/perfil', exigirLogin, rotasDePerfil);
+
+// Confirmação do e-mail por código. Atrás de exigirLogin de propósito: fosse
+// rota aberta, daria para disparar e-mail deste servidor para qualquer
+// endereço do mundo.
+app.use('/api/email', exigirLogin, rotasDeConfirmacaoDeEmail);
 
 // Lançamentos. O exigirLogin fica no grupo inteiro: nenhuma rota de
 // transação existe sem autenticação, nem por esquecimento.

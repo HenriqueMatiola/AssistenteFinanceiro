@@ -113,6 +113,31 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
         </header>
 
         <div className="conteudo">
+          {/*
+            A faixa aparece em todas as abas até o e-mail ser confirmado, e
+            some sozinha no instante em que ele é. Ela não confirma nada aqui:
+            leva ao Perfil, onde o fluxo mora inteiro — dois lugares para fazer
+            a mesma coisa seriam dois lugares para consertar depois.
+
+            Some também em quem ainda não tem e-mail nenhum: pedir para
+            confirmar o que não existe só confundiria.
+          */}
+          {usuario.email && !usuario.emailVerificado && aba !== 'perfil' && (
+            <div className="faixa-confirmacao" role="status">
+              <span>
+                Confirme seu e-mail para garantir que você consegue recuperar a
+                conta.
+              </span>
+              <button
+                type="button"
+                className="botao--discreto"
+                onClick={() => setAba('perfil')}
+              >
+                Confirmar agora
+              </button>
+            </div>
+          )}
+
           <h1 className="titulo-da-tela">{abaAtual?.rotulo}</h1>
 
           {aba === 'dashboard' && <Dashboard mes={mes} />}

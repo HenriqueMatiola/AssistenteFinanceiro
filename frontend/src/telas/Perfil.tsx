@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { atualizarPerfil, trocarSenha, type Usuario } from '../api.ts';
 import { prepararFotoDePerfil, ErroDeImagem } from '../imagem.ts';
 import Avatar from '../componentes/Avatar.tsx';
+import ConfirmacaoDeEmail from '../componentes/ConfirmacaoDeEmail.tsx';
 
 interface Props {
   usuario: Usuario;
@@ -190,6 +191,16 @@ function Perfil({ usuario, aoAtualizar }: Props) {
             {salvando ? 'Salvando…' : 'Salvar'}
           </button>
         </form>
+      </section>
+
+      {/*
+        A confirmação vem logo depois dos dados, e não no fim da tela: ela fala
+        do campo de e-mail que está ali em cima, e quem acabou de trocar o
+        endereço precisa achar o caminho de confirmar o novo sem procurar.
+      */}
+      <section className="cartao">
+        <h2>Confirmação de e-mail</h2>
+        <ConfirmacaoDeEmail usuario={usuario} aoAtualizar={aoAtualizar} />
       </section>
 
       {/*

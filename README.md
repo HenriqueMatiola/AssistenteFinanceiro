@@ -70,6 +70,38 @@ backend é recusar tokens do Google emitidos para outro aplicativo. Já o
 **segredo do cliente**, que o Google mostra na mesma tela, este app não usa —
 não coloque ele em lugar nenhum.
 
+### Passo 7 (opcional): confirmação de e-mail
+
+Sem isto o app funciona normalmente — a tela de Perfil avisa que o envio não
+está configurado neste servidor, e ninguém fica travado por causa disso.
+
+O envio usa o **SMTP do Gmail** com uma *senha de app*: 16 letras que o Google
+gera só para este programa. Ela não é a senha da sua conta, não abre o Gmail no
+navegador e dá para revogar sozinha depois.
+
+1. Ligue a **verificação em duas etapas** na conta Google que vai enviar
+   (`myaccount.google.com` → Segurança). Sem ela o Google não oferece senhas
+   de app.
+2. Ainda em **Segurança**, procure **Senhas de app**, crie uma e copie as 16
+   letras.
+3. Preencha `backend/.env`:
+
+   ```
+   EMAIL_REMETENTE=seu-endereco@gmail.com
+   EMAIL_SENHA_DE_APP=as16letrassemespacos
+   EMAIL_NOME_DO_REMETENTE=Assistente Financeiro
+   ```
+
+4. Reinicie o backend.
+
+Quem entra pelo Google não precisa confirmar nada: o token do Google já traz o
+e-mail verificado, e a conta nasce confirmada.
+
+O mesmo envio serve ao **"esqueci minha senha"** da tela de entrada. Numa conta
+criada pelo Google — que nunca escolheu senha —, esse fluxo CRIA a primeira: a
+partir daí ela entra pelos dois caminhos, e o botão do Google continua
+funcionando.
+
 ## Rodando no dia a dia
 
 Precisa de **três coisas no ar**. O banco fica em segundo plano; backend e
@@ -115,6 +147,10 @@ Depois abra <http://localhost:5173> no navegador.
 | `POST /api/cadastro` | Recebe `{login, email, senha}`, cria a conta e já devolve `{token, usuario}` |
 | `POST /api/auth/google` | Recebe `{credencial}` — o token assinado do botão do Google —, confere a assinatura com o Google e devolve `{token, usuario}`. Cria a conta na primeira vez. Responde 503 se `GOOGLE_CLIENT_ID` não estiver configurado |
 | `GET /api/eu` | **Protegida.** Devolve o usuário dono do token enviado em `Authorization: Bearer <token>` |
+| `POST /api/email/codigo` | **Protegida.** Sorteia um código de 6 dígitos e manda para o e-mail da conta. Responde 429 com `{segundos}` se pedirem de novo antes de 1 minuto, e 503 se o envio não estiver configurado |
+| `POST /api/senha/codigo` | **Pública.** Recebe `{email}` e manda um código de 6 dígitos para ele. Responde SEMPRE a mesma coisa, exista ou não a conta — senão viraria um jeito de descobrir quem tem conta aqui |
+| `POST /api/senha/redefinir` | **Pública.** Recebe `{email, codigo, novaSenha}`, troca a senha e devolve `{token, usuario}` já logado. O código morre no uso; vale 15 min e aguenta 5 palpites |
+| `POST /api/email/confirmar` | **Protegida.** Recebe `{codigo}`, confere contra o hash guardado e devolve `{usuario}` com `emailVerificado: true`. O código vale 15 minutos e aguenta 5 palpites |
 | `GET /api/transacoes` | **Protegida.** Lista os lançamentos do usuário do token. Filtros opcionais: `?mes=2026-08` e `?tipo=GASTO` |
 | `POST /api/transacoes` | **Protegida.** Cria um lançamento. Com `parcelas: 12`, cria as 12 de uma vez; com `ehSobraDoMesAnterior: true`, o valor vira sobra em vez de entrada. Devolve sempre uma lista |
 | `PATCH /api/transacoes/:id` | **Protegida.** Marca como pago/recebido: `{status: "CONCLUIDA"}` |

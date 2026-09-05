@@ -644,3 +644,55 @@
     gap: 0.3rem;
   }
 }
+
+/* --- Esqueci minha senha -------------------------------------------------- */
+
+/* A linha do "Esqueceu sua senha?" e a do reenvio. Alinhada à direita e sem
+   margem: ela pendura no campo logo acima, em vez de virar mais um item da
+   pilha do formulário. O `gap` do form já dá o respiro. */
+.entrada__esqueci {
+  margin: -0.75rem 0 0;
+  text-align: right;
+  font-size: 0.82rem;
+}
+
+/* O reenvio desligado durante a contagem: continua legível, mas não convida
+   ao clique. */
+.entrada__link:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.entrada__link:disabled:hover {
+  color: var(--texto);
+  background: color-mix(in srgb, var(--ambar-forte) 8%, transparent);
+  border-color: transparent;
+}
+
+/* Irmão do .entrada__erro, em âmbar: não é falha, é um recado do sistema —
+   "o código saiu, vá olhar sua caixa". Mesmo traço à esquerda, cor trocada. */
+.entrada__aviso {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ambar);
+  margin: 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--ambar);
+}
+
+/* Seis dígitos espaçados, na fonte de dados: dá para conferir dígito a dígito
+   contra o e-mail aberto ao lado. */
+.campo-entrada__codigo {
+  font-family: var(--fonte-dados);
+  letter-spacing: 0.35em;
+}
+
+/* Explica o modo recuperar logo abaixo do título.
+   Não reaproveita a `.entrada__nota`: aquela é nota de RODAPÉ (traço em cima,
+   sem margem embaixo) e, usada como subtítulo, encostava no primeiro rótulo. */
+.entrada__subtitulo {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--texto-suave);
+  margin: -0.4rem 0 1.9rem;
+}

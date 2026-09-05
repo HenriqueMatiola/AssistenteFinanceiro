@@ -15,6 +15,7 @@ export const CAMPOS_DO_USUARIO = {
   email: true,
   foto: true,
   senhaHash: true,
+  emailVerificadoEm: true,
 } as const;
 
 /** O que a linha do banco tem, do ponto de vista deste módulo. */
@@ -25,6 +26,7 @@ interface LinhaDeUsuario {
   email: string | null;
   foto: string | null;
   senhaHash: string | null;
+  emailVerificadoEm: Date | null;
 }
 
 export interface UsuarioPublico {
@@ -39,6 +41,12 @@ export interface UsuarioPublico {
    * trocar. O hash em si não sai do backend, nem em pedaço.
    */
   temSenha: boolean;
+  /**
+   * Se a pessoa já provou que a caixa de e-mail é dela. A tela usa isto para
+   * decidir se mostra a faixa pedindo confirmação. A data em si não sai do
+   * backend: para a interface, só interessa o sim ou não.
+   */
+  emailVerificado: boolean;
 }
 
 export function paraUsuarioPublico(linha: LinhaDeUsuario): UsuarioPublico {
@@ -49,5 +57,6 @@ export function paraUsuarioPublico(linha: LinhaDeUsuario): UsuarioPublico {
     email: linha.email,
     foto: linha.foto,
     temSenha: linha.senhaHash !== null,
+    emailVerificado: linha.emailVerificadoEm !== null,
   };
 }

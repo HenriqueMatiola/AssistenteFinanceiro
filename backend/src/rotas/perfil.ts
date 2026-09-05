@@ -29,7 +29,16 @@ rotasDePerfil.patch('/', async (req, res) => {
     const usuarioId = idDoUsuarioLogado(req);
     const corpo = req.body as { nome?: unknown; email?: unknown; foto?: unknown };
 
-    const dados: { nome?: string; email?: string; foto?: string | null } = {};
+    const dados: {
+      nome?: string;
+      email?: string;
+      foto?: string | null;
+      emailVerificadoEm?: Date | null;
+      codigoDeEmailHash?: string | null;
+      codigoDeEmailExpiraEm?: Date | null;
+      codigoDeEmailTentativas?: number;
+      codigoDeEmailEnviadoEm?: Date | null;
+    } = {};
 
     if ('nome' in corpo) dados.nome = validarNomeDeExibicao(corpo.nome);
     if ('foto' in corpo) dados.foto = validarFotoDePerfil(corpo.foto);
@@ -51,6 +60,24 @@ rotasDePerfil.patch('/', async (req, res) => {
       }
 
       dados.email = email;
+
+      /*
+       * E-mail novo é e-mail não confirmado.
+       *
+       * `emailVerificadoEm` fala do endereço que está na linha AGORA — deixá-lo
+       * preenchido depois da troca faria o app jurar que um endereço nunca
+       * visto já foi confirmado. O código pendente vai junto: ele foi enviado
+       * para a caixa antiga e não prova nada sobre a nova.
+       *
+       * Trocar pelo mesmo e-mail cai aqui também. Custa uma confirmação a mais
+       * a quem salvou o formulário sem mexer no campo — e o preço de errar
+       * para o outro lado seria bem pior.
+       */
+      dados.emailVerificadoEm = null;
+      dados.codigoDeEmailHash = null;
+      dados.codigoDeEmailExpiraEm = null;
+      dados.codigoDeEmailTentativas = 0;
+      dados.codigoDeEmailEnviadoEm = null;
     }
 
     if (Object.keys(dados).length === 0) {
