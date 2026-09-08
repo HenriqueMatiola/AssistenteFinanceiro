@@ -20,6 +20,7 @@ import { intervaloDoMes, mesAtualUTC } from '../validacao.ts';
 import { responderErro } from '../respostas.ts';
 import { totalPrevisto } from '../previsao.ts';
 import { previsaoDoMes } from '../previsaoDoMes.ts';
+import { sobraQueEntraNoMes } from '../sobra.ts';
 import { StatusTransacao, TipoTransacao } from '../generated/prisma/enums.ts';
 
 export const rotasDeResumo = Router();
@@ -88,10 +89,11 @@ rotasDeResumo.get('/', async (req, res) => {
         _sum: { valor: true },
       }),
 
-      // Tudo que veio antes deste mês. A diferença é a "sobra": o que sobrou
-      // (ou faltou) de toda a história até aqui. Só lançamentos — o passado
-      // não recebe previsão. Aqui a sobra lançada CONTA, porque de um mês
-      // futuro ela é apenas mais um valor que já estava na conta.
+      // Tudo que veio antes deste mês: o que sobrou de toda a história até
+      // aqui. Só lançamentos — o passado não recebe previsão. Aqui a sobra
+      // lançada CONTA, porque de um mês futuro ela é apenas mais um valor que
+      // já estava na conta. Se a história fecha no vermelho, isso NÃO vira
+      // dívida deste mês — quem corta em zero, e por quê, é `sobra.ts`.
       prisma.transacao.groupBy({
         by: ['tipo'],
         where: { usuarioId, data: { lt: intervalo.gte } },
@@ -128,15 +130,21 @@ rotasDeResumo.get('/', async (req, res) => {
       realizado.saidas + pendenteLancado.saidas + previsto.saidas
     );
 
-    // A sobra tem duas origens que se somam: o resultado acumulado dos meses
-    // já registrados e o valor que o usuário informou à mão neste mês. Quem
-    // usa o app desde o começo só tem a primeira; quem começou no meio,
-    // só a segunda.
-    const sobraDoMesAnterior = arredondarCentavos(
+    // A sobra tem duas origens: o resultado acumulado dos meses já registrados
+    // e o valor que o usuário informou à mão neste mês. Quem usa o app desde o
+    // começo só tem a primeira; quem começou no meio, só a segunda.
+    //
+    // Elas NÃO entram do mesmo jeito — o acumulado morre em zero quando é
+    // negativo, o informado à mão passa como está. `sobra.ts` explica por quê.
+    const acumuladoDosMesesAnteriores =
       totalDe(dosMesesAnteriores, TipoTransacao.GANHO) -
-        totalDe(dosMesesAnteriores, TipoTransacao.GASTO) +
-        totalDe(sobraLancada, TipoTransacao.GANHO) -
-        totalDe(sobraLancada, TipoTransacao.GASTO)
+      totalDe(dosMesesAnteriores, TipoTransacao.GASTO);
+
+    const informadaAMao =
+      totalDe(sobraLancada, TipoTransacao.GANHO) - totalDe(sobraLancada, TipoTransacao.GASTO);
+
+    const sobraDoMesAnterior = arredondarCentavos(
+      sobraQueEntraNoMes(acumuladoDosMesesAnteriores, informadaAMao)
     );
 
     const saldo = arredondarCentavos(entradas - saidas);

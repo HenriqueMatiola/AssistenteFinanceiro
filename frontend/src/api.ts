@@ -26,6 +26,24 @@ export interface Usuario {
    * enquanto o e-mail é só um endereço que alguém escreveu num formulário.
    */
   emailVerificado: boolean;
+  /**
+   * Se o app está barrado até essa confirmação acontecer.
+   *
+   * Não é o contrário de `emailVerificado`: quem decide é o backend, e um
+   * servidor sem envio de e-mail configurado não barra ninguém. A tela obedece
+   * este campo em vez de deduzir a partir do de cima — deduzir travaria a
+   * navegação de quem o servidor está deixando passar, e aí o único caminho de
+   * volta seria um código que aquele servidor não sabe mandar.
+   */
+  precisaConfirmarEmail: boolean;
+  /**
+   * Se já existe um código válido esperando para ser digitado.
+   *
+   * O cadastro manda o primeiro código junto com a conta, então a tela abre
+   * direto no campo em vez de oferecer um botão "Enviar código" — que só
+   * levaria a um "aguarde 60 segundos" que a pessoa não provocou.
+   */
+  codigoDeEmailPendente: boolean;
 }
 
 /** Erro vindo da API, carregando o código HTTP junto da mensagem. */
@@ -680,4 +698,116 @@ export async function registrarOperacao(nova: NovaOperacao): Promise<void> {
 
 export async function excluirOperacao(id: number): Promise<void> {
   await chamar(`/api/investimentos/${id}`, { method: 'DELETE' });
+}
+
+// --- A receber e a pagar ----------------------------------------------------
+
+/** De que lado o dinheiro está: te devem, ou você deve. */
+export type TipoDeAcerto = 'RECEBER' | 'PAGAR';
+
+/** Um pagamento ou recebimento parcial de um acerto. */
+export interface BaixaDeAcerto {
+  id: number;
+  /** "AAAA-MM-DD" */
+  data: string;
+  valor: number;
+}
+
+export interface Acerto {
+  id: number;
+  tipo: TipoDeAcerto;
+  pessoa: string;
+  /** O valor original, que não muda quando entram pagamentos. */
+  valor: number;
+  descricao: string | null;
+  /** "AAAA-MM-DD" */
+  criadoEm: string;
+  /** Soma das baixas — vem calculado do backend. */
+  pago: number;
+  /** Quanto ainda falta. Nunca negativo. */
+  saldo: number;
+  quitado: boolean;
+  /** Do mais recente para o mais antigo. */
+  baixas: BaixaDeAcerto[];
+}
+
+/** Os números fixados no topo da aba. Só contam o que está em aberto. */
+export interface TotaisDeAcertos {
+  aReceber: number;
+  aPagar: number;
+  /** `aReceber − aPagar`. Positivo quer dizer que, no fim, sobra para você. */
+  liquido: number;
+}
+
+export interface NovoAcerto {
+  tipo: TipoDeAcerto;
+  pessoa: string;
+  valor: number;
+  descricao?: string;
+}
+
+/**
+ * Traz os totais e a lista inteira de uma vez.
+ *
+ * Uma chamada só porque os dois vêm da mesma consulta no banco: pedir os
+ * totais à parte abriria a porta para a tela mostrar um topo que não bate com
+ * a lista logo abaixo dele.
+ */
+export async function listarAcertos(): Promise<{
+  totais: TotaisDeAcertos;
+  acertos: Acerto[];
+}> {
+  return chamar('/api/acertos');
+}
+
+export async function criarAcerto(novo: NovoAcerto): Promise<Acerto> {
+  const resposta = await chamar<{ acerto: Acerto }>('/api/acertos', {
+    method: 'POST',
+    body: JSON.stringify(novo),
+  });
+  return resposta.acerto;
+}
+
+/** Corrige quem, quanto ou para quê, sem perder o histórico de pagamentos. */
+export async function atualizarAcerto(
+  id: number,
+  mudancas: { pessoa?: string; valor?: number; descricao?: string | null }
+): Promise<Acerto> {
+  const resposta = await chamar<{ acerto: Acerto }>(`/api/acertos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(mudancas),
+  });
+  return resposta.acerto;
+}
+
+/** Apaga o acerto e o histórico dele junto. */
+export async function excluirAcerto(id: number): Promise<void> {
+  await chamar(`/api/acertos/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Registra um pagamento ou recebimento parcial.
+ *
+ * Devolve o acerto INTEIRO, já com o saldo novo e o histórico atualizado — a
+ * tela não recalcula nada por conta própria, e por isso não tem como divergir
+ * do servidor.
+ */
+export async function registrarBaixa(
+  acertoId: number,
+  baixa: { data: string; valor: number }
+): Promise<Acerto> {
+  const resposta = await chamar<{ acerto: Acerto }>(`/api/acertos/${acertoId}/baixas`, {
+    method: 'POST',
+    body: JSON.stringify(baixa),
+  });
+  return resposta.acerto;
+}
+
+/** Desfaz um pagamento registrado errado. Devolve o acerto atualizado. */
+export async function excluirBaixa(acertoId: number, baixaId: number): Promise<Acerto> {
+  const resposta = await chamar<{ acerto: Acerto }>(
+    `/api/acertos/${acertoId}/baixas/${baixaId}`,
+    { method: 'DELETE' }
+  );
+  return resposta.acerto;
 }

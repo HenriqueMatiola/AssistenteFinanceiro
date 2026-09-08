@@ -200,7 +200,15 @@ function Perfil({ usuario, aoAtualizar }: Props) {
       */}
       <section className="cartao">
         <h2>Confirmação de e-mail</h2>
-        <ConfirmacaoDeEmail usuario={usuario} aoAtualizar={aoAtualizar} />
+        {/* A `key` no endereço remonta o componente quando o e-mail muda.
+            Trocar o e-mail apaga o código pendente lá no banco, e sem isto a
+            tela seguiria mostrando o campo do código antigo — junto com os
+            dígitos já digitados, que agora não valem para nada. */}
+        <ConfirmacaoDeEmail
+          key={usuario.email ?? 'sem-email'}
+          usuario={usuario}
+          aoAtualizar={aoAtualizar}
+        />
       </section>
 
       {/*

@@ -172,6 +172,19 @@
   transform: scaleY(1);
 }
 
+/* Enquanto o e-mail não é confirmado, só o Perfil responde. As outras abas
+   ficam apagadas e perdem os efeitos de hover: o desligamento precisa ser
+   visível ANTES do clique, e não virar um clique que não faz nada. */
+.lateral__item:disabled {
+  color: var(--petroleo-600);
+  cursor: not-allowed;
+}
+
+.lateral__item:disabled::before,
+.lateral__item:disabled::after {
+  transform: none;
+}
+
 /* Sob o cursor, o rótulo anda três pixels na direção do trilho e volta. Só
    enquanto o cursor está lá: parado, os seis rótulos alinham na mesma
    coluna, e um deles fora do prumo pareceria defeito. */
@@ -380,7 +393,7 @@
   /* Altura declarada, e não herdada do conteúdo: a trilha é uns 3px mais alta
      que o bloco do usuário sozinho, e sem isto a barra encolhia ao trocar
      para uma aba sem mês. */
-  min-height: 3.75rem;
+  min-height: var(--barra-altura);
   padding: 0.4rem 2rem;
   background: var(--superficie);
   border-bottom: 1px solid var(--borda);
@@ -2247,4 +2260,183 @@ code {
 /* Espaço entre o "Enviar outro código" e a mensagem logo acima dele. */
 .confirmacao > .botao--discreto {
   margin-top: 0.2rem;
+}
+
+/* ==========================================================================
+   A receber e a pagar
+   ========================================================================== */
+
+/* Os totais acompanham a rolagem, grudados logo abaixo da barra superior — com
+   a lista longa, o número que responde "no fim das contas, sobra ou falta?" é
+   justamente o que se quer olhar enquanto se percorre as linhas.
+
+   z-index menor que o da barra (5): quando os dois se encontram, quem fica por
+   cima é a barra, que é a moldura do app. */
+.totais-fixos {
+  position: sticky;
+  top: var(--barra-altura);
+  z-index: 4;
+}
+
+.acertos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.acerto {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pequeno);
+  background: var(--superficie-2);
+}
+
+/* Quitado é histórico: continua legível, mas para de disputar atenção com o
+   que ainda está em aberto. */
+.acerto--quitado {
+  opacity: 0.72;
+}
+
+.acerto__topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.acerto__pessoa {
+  font-weight: 600;
+}
+
+.acerto__descricao {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  color: var(--texto-suave);
+}
+
+/* Não encolhe quando o nome é longo: o valor é o que a pessoa procura ao
+   correr o olho pela lista. */
+.acerto__numeros {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.acerto__saldo {
+  display: block;
+  font-family: var(--fonte-dados);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.acerto__detalhe {
+  font-family: var(--fonte-dados);
+  font-size: 0.76rem;
+  color: var(--texto-suave);
+}
+
+/* --- O histórico de pagamentos --- */
+
+.acerto__historico {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0 0;
+  border-top: 1px solid var(--borda);
+}
+
+.acerto__baixa {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.83rem;
+}
+
+/* Largura mínima para as datas alinharem em coluna — e, com elas, os valores
+   que vêm logo depois. */
+.acerto__baixa-data {
+  min-width: 5.5rem;
+  font-family: var(--fonte-dados);
+  color: var(--texto-suave);
+}
+
+.acerto__baixa-valor {
+  font-family: var(--fonte-dados);
+  font-variant-numeric: tabular-nums;
+}
+
+/* O desfazer só aparece sob o cursor ou pelo teclado: ele conserta um engano,
+   não é ação do dia a dia, e uma fileira de X vermelhos daria ao histórico
+   cara de lista de pendências. Continua focável e com rótulo para quem navega
+   por teclado ou leitor de tela. */
+.acerto__desfazer {
+  margin-left: auto;
+  padding: 0.15rem 0.35rem;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.acerto__baixa:hover .acerto__desfazer,
+.acerto__desfazer:focus-visible {
+  opacity: 1;
+}
+
+/* Onde não existe cursor, não existe hover: no toque ele fica sempre visível. */
+@media (hover: none) {
+  .acerto__desfazer {
+    opacity: 1;
+  }
+}
+
+/* --- Registrar um pagamento --- */
+
+.acerto__form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--borda);
+}
+
+.acerto__form .campo {
+  margin: 0;
+}
+
+/* O erro ocupa a linha inteira, em vez de se espremer entre dois botões. */
+.acerto__erro {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* --- As etiquetas dos dois lados --- */
+
+.etiqueta--ganho {
+  border-color: var(--entrada);
+  color: var(--entrada);
+}
+
+.etiqueta--gasto {
+  border-color: var(--saida);
+  color: var(--saida);
+}
+
+/* Numa coluna estreita o topo empilha, e alinhar o valor à direita só o
+   afastaria do nome a que ele pertence. */
+@media (max-width: 560px) {
+  .acerto__numeros {
+    text-align: left;
+  }
+
+  .acerto__form .campo {
+    flex-basis: 100%;
+  }
 }

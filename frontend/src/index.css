@@ -56,6 +56,11 @@
   --raio-pequeno: 6px;
   --largura-lateral: 232px;
 
+  /* Altura da barra superior. Mora aqui porque dois lugares precisam do mesmo
+     número: a própria barra, que é sticky no topo, e o bloco de totais da aba
+     "A receber e a pagar", que gruda logo abaixo dela. */
+  --barra-altura: 3.75rem;
+
   /* Navegação lateral. O marcador âmbar desliza calculando
      `ordem x (altura + espaço)`, então estas três medidas precisam ser as
      mesmas que os itens usam — por isso moram aqui, e não soltas no CSS. */

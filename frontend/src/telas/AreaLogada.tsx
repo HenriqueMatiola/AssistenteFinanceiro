@@ -8,6 +8,7 @@ import Lancamentos from './Lancamentos.tsx';
 import Recorrencias from './Recorrencias.tsx';
 import Projecao from './Projecao.tsx';
 import Investimentos from './Investimentos.tsx';
+import Acertos from './Acertos.tsx';
 import Perfil from './Perfil.tsx';
 import Avatar from '../componentes/Avatar.tsx';
 
@@ -18,6 +19,7 @@ type Aba =
   | 'lancamentos'
   | 'projecao'
   | 'recorrencias'
+  | 'acertos'
   | 'investimentos'
   | 'perfil';
 
@@ -31,6 +33,7 @@ const ABAS: { id: Aba; rotulo: string; usaMes: boolean }[] = [
   { id: 'lancamentos', rotulo: 'Lançamentos', usaMes: true },
   { id: 'projecao', rotulo: 'Projeção', usaMes: false },
   { id: 'recorrencias', rotulo: 'Recorrências', usaMes: false },
+  { id: 'acertos', rotulo: 'A receber e a pagar', usaMes: false },
   { id: 'investimentos', rotulo: 'Investimentos', usaMes: false },
   { id: 'perfil', rotulo: 'Perfil', usaMes: false },
 ];
@@ -45,11 +48,29 @@ interface Props {
 function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
   // Abre no Dashboard: é a visão que responde "como estou este mês?" sem
   // precisar de nenhum clique.
-  const [aba, setAba] = useState<Aba>('dashboard');
+  const [abaEscolhida, setAba] = useState<Aba>('dashboard');
 
   // O mês mora aqui, e não dentro de cada tela: trocar de aba não deve
   // devolver você para o mês corrente no meio de uma conferência.
   const [mes, setMes] = useState(mesAtualISO());
+
+  /*
+   * Enquanto o e-mail não está confirmado, o app inteiro se resume ao Perfil:
+   * é lá que moram o campo de e-mail e o passo a passo do código.
+   *
+   * Quem decide é o backend: `precisaConfirmarEmail` já vem pronto de lá, e as
+   * rotas de dados respondem 403 de qualquer jeito — esconder um botão nunca
+   * protegeu nada. O papel da tela aqui é outro: parar de oferecer o que não
+   * vai funcionar, para a pessoa não bater numa porta trancada e ficar sem
+   * entender o que aconteceu.
+   *
+   * A aba é DERIVADA, e não forçada com `setAba` dentro de um efeito: forçar
+   * mostraria o Dashboard por um instante antes de corrigir, e faria a
+   * navegação esquecer onde a pessoa estava. Assim, no segundo em que a
+   * confirmação sai, ela volta sozinha para a aba que tinha escolhido.
+   */
+  const precisaConfirmar = usuario.precisaConfirmarEmail;
+  const aba: Aba = precisaConfirmar ? 'perfil' : abaEscolhida;
 
   // A ordem também posiciona o marcador no trilho da barra: o CSS multiplica
   // ela pela altura do item, e assim não precisa medir nada no navegador a
@@ -82,6 +103,11 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
               style={{ '--ordem': ordem } as CSSProperties}
               onClick={() => setAba(id)}
               aria-current={aba === id ? 'page' : undefined}
+              /* Desligadas até o e-mail ser confirmado. O `disabled` também as
+                 tira da navegação por Tab, e a faixa logo abaixo é quem diz o
+                 motivo — um `title` não serviria: o navegador não mostra dica
+                 de elemento desabilitado. */
+              disabled={precisaConfirmar && id !== 'perfil'}
             >
               <span className="lateral__item-rotulo">{rotulo}</span>
             </button>
@@ -106,6 +132,8 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
             <Avatar nome={usuario.nome} foto={usuario.foto} />
             <span className="usuario__nome">{usuario.nome}</span>
 
+            {/* Sair continua valendo mesmo barrado: quem entrou na conta
+                errada precisa poder cair fora sem confirmar e-mail nenhum. */}
             <button type="button" className="botao-sair" onClick={aoSair}>
               Sair
             </button>
@@ -114,27 +142,22 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
 
         <div className="conteudo">
           {/*
-            A faixa aparece em todas as abas até o e-mail ser confirmado, e
-            some sozinha no instante em que ele é. Ela não confirma nada aqui:
-            leva ao Perfil, onde o fluxo mora inteiro — dois lugares para fazer
-            a mesma coisa seriam dois lugares para consertar depois.
+            A faixa explica por que o resto do app não está disponível. Ela some
+            sozinha no instante em que a confirmação sai, e não tem botão de
+            dispensar, porque não há para onde mandar a pessoa: o passo a passo já
+            está logo abaixo, nesta mesma tela.
 
-            Some também em quem ainda não tem e-mail nenhum: pedir para
-            confirmar o que não existe só confundiria.
+            As duas frases não são frescura. Quem não tem e-mail nenhum — conta
+            criada antes de o cadastro pedir um — não tem o que confirmar, e
+            mandá-la "confirmar o e-mail" seria um beco sem saída.
           */}
-          {usuario.email && !usuario.emailVerificado && aba !== 'perfil' && (
+          {precisaConfirmar && (
             <div className="faixa-confirmacao" role="status">
               <span>
-                Confirme seu e-mail para garantir que você consegue recuperar a
-                conta.
+                {usuario.email
+                  ? 'Confirme seu e-mail abaixo para liberar o restante do app.'
+                  : 'Cadastre um e-mail abaixo e confirme-o para liberar o restante do app.'}
               </span>
-              <button
-                type="button"
-                className="botao--discreto"
-                onClick={() => setAba('perfil')}
-              >
-                Confirmar agora
-              </button>
             </div>
           )}
 
@@ -144,6 +167,7 @@ function AreaLogada({ usuario, aoSair, aoAtualizarUsuario }: Props) {
           {aba === 'lancamentos' && <Lancamentos mes={mes} aoTrocarMes={setMes} />}
           {aba === 'projecao' && <Projecao />}
           {aba === 'recorrencias' && <Recorrencias />}
+          {aba === 'acertos' && <Acertos />}
           {aba === 'investimentos' && <Investimentos />}
           {aba === 'perfil' && <Perfil usuario={usuario} aoAtualizar={aoAtualizarUsuario} />}
         </div>

@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma.ts';
-import { gerarToken, exigirLogin } from './auth.ts';
+import { gerarToken, exigirLogin, exigirEmailConfirmado } from './auth.ts';
 import { ErroDeValidacao } from './validacao.ts';
 import {
   validarNomeDeUsuario,
@@ -17,9 +17,14 @@ import { rotasDeResumo } from './rotas/resumo.ts';
 import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
 import { rotasDeProjecao } from './rotas/projecao.ts';
 import { rotasDeInvestimentos } from './rotas/investimentos.ts';
+import { rotasDeAcertos } from './rotas/acertos.ts';
 import { rotasDePerfil } from './rotas/perfil.ts';
-import { rotasDeConfirmacaoDeEmail } from './rotas/confirmacaoDeEmail.ts';
+import {
+  rotasDeConfirmacaoDeEmail,
+  mandarCodigoDeConfirmacao,
+} from './rotas/confirmacaoDeEmail.ts';
 import { rotasDeRecuperacaoDeSenha } from './rotas/recuperacaoDeSenha.ts';
+import { envioDeEmailEstaConfigurado } from './email.ts';
 import {
   verificarCredencialDoGoogle,
   candidatosDeLogin,
@@ -165,7 +170,7 @@ app.post('/api/cadastro', async (req, res) => {
       return;
     }
 
-    const usuario = await prisma.usuario.create({
+    let usuario = await prisma.usuario.create({
       data: {
         nome: nomeDeExibicao(login),
         login,
@@ -174,6 +179,27 @@ app.post('/api/cadastro', async (req, res) => {
       },
       select: CAMPOS_DO_USUARIO,
     });
+
+    /*
+     * O primeiro código sai junto com a conta.
+     *
+     * A pessoa vai cair na tela de confirmação de qualquer jeito; obrigá-la a
+     * clicar em "Enviar código" para chegar lá seria um passo a mais para o
+     * mesmo lugar. `usuario` é REATRIBUÍDO porque a linha volta atualizada, e é
+     * ela que conta à tela que já existe um código esperando.
+     *
+     * Best-effort de propósito: a conta já existe e o token já vale, então um
+     * Gmail fora do ar não pode derrubar o cadastro. Se o envio falhar, a
+     * pessoa pede outro código pelo Perfil — exatamente o que ela faria se o
+     * e-mail se perdesse no caminho.
+     */
+    if (envioDeEmailEstaConfigurado()) {
+      try {
+        usuario = await mandarCodigoDeConfirmacao(usuario.id, email, usuario.nome);
+      } catch (erro) {
+        console.error('Conta criada, mas o primeiro código não saiu:', erro);
+      }
+    }
 
     res.status(201).json({ token: gerarToken(usuario.id), usuario: paraUsuarioPublico(usuario) });
   } catch (erro) {
@@ -340,31 +366,47 @@ app.get('/api/eu', exigirLogin, async (req, res) => {
   }
 });
 
+// Daqui para baixo, DOIS portões em vez de um.
+//
+// `exigirLogin` responde "quem é você?"; `exigirEmailConfirmado` responde "você
+// já provou que o e-mail que cadastrou é seu?". A divisão abaixo é toda por
+// causa disso: as três primeiras rotas são a SAÍDA de quem foi barrado, e por
+// isso seguem sem o segundo portão. Fechá-las junto seria trancar a pessoa do
+// lado de fora e esconder a chave.
+
 // "Esqueci minha senha". PÚBLICA de propósito: quem esqueceu a senha não tem
 // como fazer login para provar quem é — quem prova é o e-mail.
 app.use('/api/senha', rotasDeRecuperacaoDeSenha);
 
-// Nome, e-mail, foto e troca de senha da própria conta.
+// Nome, e-mail, foto e troca de senha da própria conta. É aqui que quem errou
+// o e-mail no cadastro conserta o endereço, e aqui que a conta antiga sem
+// e-mail nenhum ganha um — logo, tem que valer mesmo para quem está barrado.
 app.use('/api/perfil', exigirLogin, rotasDePerfil);
 
 // Confirmação do e-mail por código. Atrás de exigirLogin de propósito: fosse
 // rota aberta, daria para disparar e-mail deste servidor para qualquer
-// endereço do mundo.
+// endereço do mundo. E sem o segundo portão pelo motivo oposto — ela É o
+// caminho para atravessá-lo.
 app.use('/api/email', exigirLogin, rotasDeConfirmacaoDeEmail);
 
-// Lançamentos. O exigirLogin fica no grupo inteiro: nenhuma rota de
+// Lançamentos. Os dois middlewares ficam no grupo inteiro: nenhuma rota de
 // transação existe sem autenticação, nem por esquecimento.
-app.use('/api/transacoes', exigirLogin, rotasDeTransacoes);
+app.use('/api/transacoes', exigirLogin, exigirEmailConfirmado, rotasDeTransacoes);
 
 // Totais e agrupamentos do Dashboard.
-app.use('/api/resumo', exigirLogin, rotasDeResumo);
+app.use('/api/resumo', exigirLogin, exigirEmailConfirmado, rotasDeResumo);
 
 // Contas que se repetem todo mês, e a projeção que as usa.
-app.use('/api/recorrencias', exigirLogin, rotasDeRecorrencias);
-app.use('/api/projecao', exigirLogin, rotasDeProjecao);
+app.use('/api/recorrencias', exigirLogin, exigirEmailConfirmado, rotasDeRecorrencias);
+app.use('/api/projecao', exigirLogin, exigirEmailConfirmado, rotasDeProjecao);
 
 // Carteira de ativos, com cotação buscada ao vivo a cada consulta.
-app.use('/api/investimentos', exigirLogin, rotasDeInvestimentos);
+app.use('/api/investimentos', exigirLogin, exigirEmailConfirmado, rotasDeInvestimentos);
+
+// Dinheiro emprestado, adiantado ou rateado com alguém — a aba "A receber e a
+// pagar". Fica fora do balanço de propósito: um acerto não tem data, então não
+// pertence a mês nenhum.
+app.use('/api/acertos', exigirLogin, exigirEmailConfirmado, rotasDeAcertos);
 
 const porta = Number(process.env.PORT ?? 3001);
 

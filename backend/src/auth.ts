@@ -5,10 +5,19 @@
  * dentro dele, então o backend descobre quem está pedindo sem consultar o
  * banco. Qualquer um consegue LER o conteúdo de um JWT — por isso nunca se
  * coloca senha lá dentro —, mas ninguém consegue FORJAR um sem o segredo.
+ *
+ * Aqui moram os dois porteiros das rotas. `exigirLogin` responde "quem é
+ * você?", e resolve isso só com o token, sem tocar no banco.
+ * `exigirEmailConfirmado` responde "você já provou que este e-mail é seu?", e
+ * esse precisa do banco: a resposta muda entre uma requisição e outra, e
+ * ficaria velha dentro de um token que vale sete dias.
  */
 import 'dotenv/config';
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
+import { prisma } from './prisma.ts';
+import { envioDeEmailEstaConfigurado } from './email.ts';
+import { motivoDoBloqueio, mensagemDoBloqueio } from './acessoAoApp.ts';
 
 // O `?? ''` deixa o tipo como string (e não "string ou indefinido"), e a
 // verificação logo abaixo derruba o servidor se a variável estiver faltando.
@@ -83,4 +92,50 @@ export function idDoUsuarioLogado(req: Request): number {
     throw new Error('Rota protegida foi montada sem o middleware exigirLogin.');
   }
   return req.usuarioId;
+}
+
+/**
+ * Middleware: entra DEPOIS do `exigirLogin` e barra quem ainda não confirmou
+ * o e-mail. Vale só para as rotas de dados — as de perfil, confirmação e
+ * recuperação de senha ficam abertas, porque são a saída de quem foi barrado.
+ *
+ * Responde 403, nunca 401. O frontend trata 401 como sessão morta: apaga o
+ * token e recarrega a página. Um 401 aqui viraria um laço de logout em quem só
+ * precisava digitar seis dígitos.
+ */
+export async function exigirEmailConfirmado(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const conta = await prisma.usuario.findUnique({
+      where: { id: idDoUsuarioLogado(req) },
+      select: { email: true, emailVerificadoEm: true },
+    });
+
+    if (!conta) {
+      // Token válido, mas o usuário sumiu do banco. Aqui o 401 é o certo: a
+      // sessão de fato não vale mais nada.
+      res.status(401).json({ erro: 'Usuário não encontrado.' });
+      return;
+    }
+
+    const motivo = motivoDoBloqueio(conta, envioDeEmailEstaConfigurado());
+
+    if (motivo) {
+      res.status(403).json({
+        erro: mensagemDoBloqueio(motivo),
+        // A marca que a tela procura para mostrar o passo a passo em vez de um
+        // erro solto: "403" sozinho não diz a ninguém o que fazer.
+        precisaConfirmarEmail: true,
+      });
+      return;
+    }
+
+    next();
+  } catch (erro) {
+    console.error('Falha ao conferir a confirmação do e-mail:', erro);
+    res.status(500).json({ erro: 'Erro interno.' });
+  }
 }

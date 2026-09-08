@@ -74,6 +74,17 @@ function Dashboard({ mes }: Props) {
     return <p className="vazio">Carregando…</p>;
   }
 
+  /*
+   * Zero não é ganho nem perda, e por isso fica sem cor.
+   *
+   * Desde que a sobra negativa passou a virar zero, "R$ 0,00" é o valor mais
+   * comum desta linha — e pintá-lo de verde, junto das entradas, anunciaria
+   * uma folga que não existe. As outras três figuras seguem com a regra
+   * simples: abaixo de zero é vermelho.
+   */
+  const corDaSobra =
+    resumo.sobraDoMesAnterior === 0 ? '' : resumo.sobraDoMesAnterior < 0 ? 'gasto' : 'ganho';
+
   return (
     <>
       <section className="cartao">
@@ -89,9 +100,7 @@ function Dashboard({ mes }: Props) {
         <div className="kpis">
           <div className="kpi">
             <span className="kpi__rotulo">Sobra anterior</span>
-            <span
-              className={`kpi__valor ${resumo.sobraDoMesAnterior < 0 ? 'gasto' : 'ganho'}`}
-            >
+            <span className={`kpi__valor ${corDaSobra}`}>
               {formatarDinheiro(resumo.sobraDoMesAnterior)}
             </span>
           </div>

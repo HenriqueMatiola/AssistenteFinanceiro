@@ -72,8 +72,17 @@ não coloque ele em lugar nenhum.
 
 ### Passo 7 (opcional): confirmação de e-mail
 
-Sem isto o app funciona normalmente — a tela de Perfil avisa que o envio não
-está configurado neste servidor, e ninguém fica travado por causa disso.
+Opcional para o app rodar, mas **é este passo que liga a exigência de
+confirmar o e-mail**. Vale entender a chave antes de virá-la:
+
+- **Sem `EMAIL_REMETENTE`/`EMAIL_SENHA_DE_APP`:** ninguém é barrado. A tela de
+  Perfil avisa que o envio não está configurado neste servidor, e o app segue
+  funcionando inteiro. É de propósito — um servidor que não sabe mandar e-mail
+  não pode exigir um código que ele não consegue enviar, ou trancaria todo
+  mundo do lado de fora.
+- **Com as duas preenchidas:** quem cria conta com senha só usa o app depois de
+  digitar o código. A navegação fica presa no Perfil até lá, e o backend recusa
+  as rotas de dados com 403. O primeiro código sai junto com o cadastro.
 
 O envio usa o **SMTP do Gmail** com uma *senha de app*: 16 letras que o Google
 gera só para este programa. Ela não é a senha da sua conta, não abre o Gmail no
@@ -94,14 +103,18 @@ navegador e dá para revogar sozinha depois.
 
 4. Reinicie o backend.
 
-Quem entra pelo Google não precisa confirmar nada: o token do Google já traz o
-e-mail verificado, e a conta nasce confirmada.
+Quem entra pelo Google não precisa confirmar nada, nem é barrado: o ID token
+assinado pelo Google já traz o e-mail verificado — prova mais forte que um
+código de 6 dígitos —, e a conta nasce confirmada.
+
+Contas que já existiam quando esta regra entrou seguem liberadas: a migration
+`20260905120000_exigir_email_confirmado` marca como confirmadas as que têm
+e-mail. Conta sem e-mail nenhum cadastra um no Perfil e confirma dali.
 
 O mesmo envio serve ao **"esqueci minha senha"** da tela de entrada. Numa conta
 criada pelo Google — que nunca escolheu senha —, esse fluxo CRIA a primeira: a
 partir daí ela entra pelos dois caminhos, e o botão do Google continua
 funcionando.
-
 ## Rodando no dia a dia
 
 Precisa de **três coisas no ar**. O banco fica em segundo plano; backend e
@@ -139,12 +152,19 @@ Depois abra <http://localhost:5173> no navegador.
 
 ## Rotas do backend
 
+**Protegida** = exige o token no cabeçalho `Authorization: Bearer <token>`.
+As rotas de dados (`transacoes`, `resumo`, `recorrencias`, `projecao`,
+`investimentos`) exigem mais uma coisa: o e-mail confirmado. Sem isso elas
+respondem **403** com `{precisaConfirmarEmail: true}`. `eu`, `perfil`, `email` e
+`senha` ficam de fora dessa segunda trava de propósito — são a saída de quem
+está barrado.
+
 | Rota | O que devolve |
 |---|---|
 | `GET /api/hello` | Mensagem de teste — prova que a API está no ar |
 | `GET /api/health` | Faz uma consulta real no PostgreSQL e informa se o banco respondeu |
 | `POST /api/login` | Recebe `{login, senha}` e devolve `{token, usuario}` |
-| `POST /api/cadastro` | Recebe `{login, email, senha}`, cria a conta e já devolve `{token, usuario}` |
+| `POST /api/cadastro` | Recebe `{login, email, senha}`, cria a conta, dispara o primeiro código de confirmação (quando o envio está configurado) e já devolve `{token, usuario}` |
 | `POST /api/auth/google` | Recebe `{credencial}` — o token assinado do botão do Google —, confere a assinatura com o Google e devolve `{token, usuario}`. Cria a conta na primeira vez. Responde 503 se `GOOGLE_CLIENT_ID` não estiver configurado |
 | `GET /api/eu` | **Protegida.** Devolve o usuário dono do token enviado em `Authorization: Bearer <token>` |
 | `POST /api/email/codigo` | **Protegida.** Sorteia um código de 6 dígitos e manda para o e-mail da conta. Responde 429 com `{segundos}` se pedirem de novo antes de 1 minuto, e 503 se o envio não estiver configurado |
@@ -169,6 +189,12 @@ Depois abra <http://localhost:5173> no navegador.
 | `POST /api/investimentos` | **Protegida.** Registra uma operação `{ativo, tipo, data, quantidade, valor, classe?}`. Recusa vender mais do que se tem |
 | `DELETE /api/investimentos/:id` | **Protegida.** Apaga uma operação do histórico |
 | `GET /api/projecao` | **Protegida.** Saldo projetado por mês. `?inicio=2026-09&meses=6` (padrão: 6 meses a partir do mês que vem) |
+| `GET /api/acertos` | **Protegida.** A aba "A receber e a pagar": os totais em aberto e a lista inteira, cada acerto já com saldo, quitado e o histórico de pagamentos |
+| `POST /api/acertos` | **Protegida.** Cria um acerto `{tipo, pessoa, valor, descricao?}`. `tipo` é `RECEBER` ou `PAGAR`; não há data de vencimento — é o que define a aba |
+| `PATCH /api/acertos/:id` | **Protegida.** Corrige `{pessoa?, valor?, descricao?}`. Recusa reduzir o valor abaixo do que já foi pago |
+| `DELETE /api/acertos/:id` | **Protegida.** Apaga o acerto e o histórico dele junto |
+| `POST /api/acertos/:id/baixas` | **Protegida.** Registra um pagamento parcial `{data, valor}`. Recusa valor maior que o saldo. Devolve o acerto inteiro, já recalculado |
+| `DELETE /api/acertos/:id/baixas/:baixaId` | **Protegida.** Desfaz um pagamento registrado errado, sem perder o resto do histórico |
 
 ## Banco de dados
 
@@ -282,8 +308,16 @@ MVP completo — todas as sete etapas do plano estão feitas:
 - **7** — polimento: identidade visual própria, barra lateral, trilha de
   meses, tabelas que viram cartões no celular e tratamento de sessão expirada
 
-Além do plano: o balanço passou a incluir as recorrências previstas, sem
-dupla contagem.
+Além do plano:
+
+- O balanço passou a incluir as recorrências previstas, sem dupla contagem.
+- **A receber e a pagar**: dinheiro emprestado, adiantado ou rateado com
+  alguém, sem data para acontecer. Cada acerto vai sendo abatido por
+  pagamentos parciais, os totais em aberto ficam fixos no topo da aba e cada
+  baixa fica no histórico com a data. Fora do balanço de propósito —
+  emprestar não é gastar, e um acerto sem data não pertence a mês nenhum.
+- Confirmação de e-mail obrigatória para usar o app (quando o envio está
+  configurado), com recuperação de senha pelo mesmo caminho.
 
 ## O que vem depois
 

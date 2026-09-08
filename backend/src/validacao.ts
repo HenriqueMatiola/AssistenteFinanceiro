@@ -6,6 +6,7 @@
  */
 import {
   ClassificacaoGasto,
+  TipoDeAcerto,
   StatusTransacao,
   TipoTransacao,
 } from './generated/prisma/enums.ts';
@@ -236,4 +237,56 @@ export function validarParcelas(bruto: unknown): number {
   }
 
   return quantidade;
+}
+
+// --- Campos de acerto (a aba "A receber e a pagar") -------------------------
+
+/**
+ * Com quem é o acerto.
+ *
+ * Texto livre pelo mesmo motivo da forma de pagamento: as pessoas de cada um
+ * são outras, e uma lista fixa não serviria a ninguém. Quem evita que "João" e
+ * "joão " virem duas pessoas na lista é a tela, que sugere os nomes já usados
+ * — e o `trim` aqui, que pelo menos garante que o espaço sobrando não conte.
+ */
+export function validarPessoa(bruto: unknown): string {
+  if (typeof bruto !== 'string' || !bruto.trim()) {
+    throw new ErroDeValidacao('Informe com quem é o acerto.');
+  }
+
+  const pessoa = bruto.trim();
+
+  if (pessoa.length > 60) {
+    throw new ErroDeValidacao('Nome longo demais (máximo 60 caracteres).');
+  }
+
+  return pessoa;
+}
+
+/** De que lado o dinheiro está: RECEBER (te devem) ou PAGAR (você deve). */
+export function validarTipoDeAcerto(bruto: unknown): TipoDeAcerto {
+  if (bruto !== TipoDeAcerto.RECEBER && bruto !== TipoDeAcerto.PAGAR) {
+    throw new ErroDeValidacao('Tipo inválido. Use RECEBER ou PAGAR.');
+  }
+
+  return bruto;
+}
+
+/**
+ * Para que serviu o acerto. Opcional, ao contrário da descrição de um
+ * lançamento: aqui o nome da pessoa e o valor muitas vezes já contam a
+ * história inteira, e exigir um texto só faria todo mundo digitar "empréstimo".
+ */
+export function validarDescricaoOpcional(bruto: unknown): string | null {
+  if (typeof bruto !== 'string' || !bruto.trim()) {
+    return null;
+  }
+
+  const descricao = bruto.trim();
+
+  if (descricao.length > 80) {
+    throw new ErroDeValidacao('Descrição longa demais (máximo 80 caracteres).');
+  }
+
+  return descricao;
 }

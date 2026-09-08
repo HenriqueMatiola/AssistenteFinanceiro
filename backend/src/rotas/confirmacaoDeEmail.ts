@@ -28,7 +28,55 @@ import {
 export const rotasDeConfirmacaoDeEmail = Router();
 
 /**
- * Sorteia um código, guarda o hash dele e manda os dígitos por e-mail.
+ * Sorteia um código, guarda o hash dele e manda os dígitos para a caixa.
+ *
+ * Mora fora das rotas porque o CADASTRO também dispara o primeiro código, e
+ * duas cópias desta sequência acabariam divergindo justamente no que importa:
+ * a ordem entre gravar e enviar.
+ *
+ * Grava ANTES de enviar, de propósito. Se o Gmail demorar e a pessoa clicar
+ * duas vezes, o segundo clique já encontra o `codigoDeEmailEnviadoEm` gravado
+ * e esbarra na espera de reenvio — em vez de disparar um segundo e-mail. O
+ * preço é um código órfão no banco quando o envio falha, o que não atrapalha:
+ * ele expira sozinho e o próximo pedido o substitui.
+ *
+ * Estoura se o envio falhar, mas só depois de apagar a marca de envio: nada de
+ * deixar a pessoa esperando um minuto para pedir de novo um código que nunca
+ * saiu.
+ *
+ * Devolve a linha já atualizada, para quem chamou responder sem uma segunda
+ * ida ao banco.
+ */
+export async function mandarCodigoDeConfirmacao(usuarioId: number, email: string, nome: string) {
+  const codigo = gerarCodigo();
+
+  const atualizado = await prisma.usuario.update({
+    where: { id: usuarioId },
+    data: {
+      codigoDeEmailHash: await hashDoCodigo(codigo),
+      codigoDeEmailExpiraEm: expiracaoAPartirDe(),
+      codigoDeEmailTentativas: 0,
+      codigoDeEmailEnviadoEm: new Date(),
+    },
+    select: CAMPOS_DO_USUARIO,
+  });
+
+  try {
+    await enviarCodigoDeConfirmacao(email, nome, codigo);
+  } catch (erro) {
+    await prisma.usuario.update({
+      where: { id: usuarioId },
+      data: { codigoDeEmailEnviadoEm: null },
+    });
+
+    throw erro;
+  }
+
+  return atualizado;
+}
+
+/**
+ * Pede um código: confere se esta conta PODE receber um agora e delega o envio.
  *
  * Pedir de novo substitui o código anterior — é o que "reenviar" quer dizer — e
  * zera as tentativas junto: o teto existe para travar quem chuta, não para
@@ -83,38 +131,9 @@ rotasDeConfirmacaoDeEmail.post('/codigo', async (req, res) => {
       return;
     }
 
-    const codigo = gerarCodigo();
-
-    /*
-     * Grava ANTES de enviar, de propósito.
-     *
-     * Se o Gmail demorar e a pessoa clicar duas vezes, o segundo clique já
-     * encontra o `codigoDeEmailEnviadoEm` gravado e esbarra na espera acima —
-     * em vez de disparar um segundo e-mail. O preço é um código órfão no banco
-     * quando o envio falha, o que não atrapalha: ele expira sozinho e o
-     * próximo pedido o substitui.
-     */
-    await prisma.usuario.update({
-      where: { id: usuarioId },
-      data: {
-        codigoDeEmailHash: await hashDoCodigo(codigo),
-        codigoDeEmailExpiraEm: expiracaoAPartirDe(),
-        codigoDeEmailTentativas: 0,
-        codigoDeEmailEnviadoEm: new Date(),
-      },
-    });
-
     try {
-      await enviarCodigoDeConfirmacao(usuario.email, usuario.nome, codigo);
+      await mandarCodigoDeConfirmacao(usuarioId, usuario.email, usuario.nome);
     } catch (erro) {
-      // O e-mail não saiu: nada de deixar a pessoa esperando um código que
-      // nunca vai chegar. Liberamos o reenvio na hora, apagando a marca de
-      // envio, e contamos a verdade.
-      await prisma.usuario.update({
-        where: { id: usuarioId },
-        data: { codigoDeEmailEnviadoEm: null },
-      });
-
       console.error('Falha ao enviar o código de confirmação:', erro);
       res.status(502).json({
         erro: 'Não consegui enviar o e-mail agora. Tente de novo em instantes.',

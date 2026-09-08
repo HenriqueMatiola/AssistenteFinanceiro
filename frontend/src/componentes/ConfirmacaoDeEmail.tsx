@@ -22,7 +22,22 @@ interface Props {
  */
 function ConfirmacaoDeEmail({ usuario, aoAtualizar }: Props) {
   const [codigo, setCodigo] = useState('');
-  const [enviado, setEnviado] = useState(false);
+
+  /*
+   * Se a tela mostra o campo do código. Duas origens:
+   *
+   *  - o backend já tem um código esperando — o cadastro manda o primeiro
+   *    junto com a conta, então quem acabou de se cadastrar chega aqui com o
+   *    e-mail já na caixa dele;
+   *  - a pessoa acabou de pedir um nesta tela.
+   *
+   * Derivado, e não um `enviado` guardado por conta própria: assim a tela
+   * acompanha o servidor sozinha. Trocar o e-mail no Perfil mata o código
+   * pendente lá no banco, e a tela volta a oferecer "Enviar código" sem
+   * precisar de nenhum efeito para descobrir isso.
+   */
+  const [pediuAgora, setPediuAgora] = useState(false);
+  const enviado = usuario.codigoDeEmailPendente || pediuAgora;
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -49,7 +64,7 @@ function ConfirmacaoDeEmail({ usuario, aoAtualizar }: Props) {
 
     try {
       const { email, validadeEmMinutos } = await pedirCodigoDeEmail();
-      setEnviado(true);
+      setPediuAgora(true);
       setEspera(60);
       setAviso(
         `Código enviado para ${email}. Ele vale por ${validadeEmMinutos} minutos — ` +
@@ -102,7 +117,7 @@ function ConfirmacaoDeEmail({ usuario, aoAtualizar }: Props) {
     <div className="confirmacao">
       <p className="explicacao">
         {enviado
-          ? 'Digite abaixo o código de 6 dígitos que chegou no seu e-mail.'
+          ? `Digite abaixo o código de 6 dígitos que enviamos para ${usuario.email}.`
           : `Vamos mandar um código de 6 dígitos para ${usuario.email}. ` +
             'Digitá-lo de volta é o que prova que a caixa é sua.'}
       </p>

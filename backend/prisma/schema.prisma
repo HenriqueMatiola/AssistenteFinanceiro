@@ -11,14 +11,14 @@ datasource db {
 }
 
 model Usuario {
-  id        Int      @id @default(autoincrement())
-  nome      String
-  login     String   @unique
+  id    Int    @id @default(autoincrement())
+  nome  String
+  login String @unique
 
   /// O segundo jeito de entrar: a tela de login aceita o nome de usuário ou
   /// o e-mail. Opcional porque contas criadas antes deste campo não têm um —
   /// elas continuam entrando pelo nome de usuário.
-  email     String?  @unique
+  email String? @unique
 
   /// Foto de perfil como data URI ("data:image/jpeg;base64,…").
   ///
@@ -26,16 +26,16 @@ model Usuario {
   /// e um arquivo à parte exigiria pasta de uploads, rota que serve estático
   /// e faxina de órfãos. O navegador reduz a imagem para 256px antes de
   /// enviar, então cada foto fica na casa das dezenas de KB.
-  foto      String?  @db.Text
+  foto String? @db.Text
 
   /// Nulo em conta que entra só pelo Google: ela nunca escolheu uma senha.
   /// Quem tem as duas coisas entra pelos dois caminhos.
-  senhaHash String?  @map("senha_hash")
+  senhaHash String? @map("senha_hash")
 
   /// O identificador da conta Google (o `sub` do ID token) — estável, e não
   /// muda quando a pessoa troca o e-mail no Google. É por ele que a conta é
   /// reconhecida no segundo login, e não pelo e-mail.
-  googleId  String?  @unique @map("google_id")
+  googleId String? @unique @map("google_id")
 
   /// Quando a pessoa provou que a caixa de e-mail é dela, digitando o código
   /// que mandamos para lá. Nulo enquanto não provou.
@@ -81,22 +81,23 @@ model Usuario {
 
   codigoDeSenhaEnviadoEm DateTime? @map("codigo_de_senha_enviado_em")
 
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  criadoEm DateTime @default(now()) @map("criado_em")
 
-  transacoes    Transacao[]
-  recorrencias  Recorrencia[]
-  operacoes     Operacao[]
+  transacoes   Transacao[]
+  recorrencias Recorrencia[]
+  operacoes    Operacao[]
+  acertos      Acerto[]
 
   @@map("usuarios")
 }
 
 /// Um lançamento: dinheiro que entrou (GANHO) ou que saiu (GASTO).
 model Transacao {
-  id        Int      @id @default(autoincrement())
-  usuarioId Int      @map("usuario_id")
+  id        Int @id @default(autoincrement())
+  usuarioId Int @map("usuario_id")
 
   /// Só o dia, sem hora: evita que fuso horário jogue o lançamento para outro mês.
-  data      DateTime @db.Date
+  data DateTime @db.Date
 
   /// O que foi (Netflix, Cabelo). A categoria diz de que grupo é; a
   /// descrição diz qual item. Sem ela, distinguir Netflix de Spotify exigiria
@@ -105,14 +106,14 @@ model Transacao {
 
   /// Decimal (NUMERIC no Postgres) faz contas exatas com centavos.
   /// Sempre positivo — quem diz se soma ou subtrai é o campo `tipo`.
-  valor     Decimal  @db.Decimal(12, 2)
+  valor Decimal @db.Decimal(12, 2)
 
   categoria String
   tipo      TipoTransacao
 
   /// Se o dinheiro já se moveu ou ainda vai se mover. É o que separa
   /// "quanto já gastei" de "quanto vou gastar" no Dashboard.
-  status    StatusTransacao @default(CONCLUIDA)
+  status StatusTransacao @default(CONCLUIDA)
 
   /// Pix, Cartão Nubank, Dinheiro… Texto livre, e não lista fixa: os cartões
   /// de cada pessoa são outros. Vazio quando não se aplica.
@@ -146,7 +147,7 @@ model Transacao {
   /// previsão daquele mês para de contar.
   recorrenciaId Int? @map("recorrencia_id")
 
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  criadoEm DateTime @default(now()) @map("criado_em")
 
   // Apagar um usuário apaga as transações dele junto.
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
@@ -168,29 +169,29 @@ model Transacao {
 /// Não vira lançamento sozinha: serve para o motor de projeção estimar
 /// os meses que ainda não aconteceram.
 model Recorrencia {
-  id        Int      @id @default(autoincrement())
-  usuarioId Int      @map("usuario_id")
+  id        Int @id @default(autoincrement())
+  usuarioId Int @map("usuario_id")
 
   descricao String
-  valor     Decimal  @db.Decimal(12, 2)
+  valor     Decimal       @db.Decimal(12, 2)
   categoria String
   tipo      TipoTransacao
 
   /// Mesmos campos da transação: quando a recorrência virar lançamento, ela
   /// já traz de onde sai o dinheiro e se é gasto fixo.
-  formaDePagamento String? @map("forma_de_pagamento")
+  formaDePagamento String?             @map("forma_de_pagamento")
   classificacao    ClassificacaoGasto?
 
   /// 1 a 31. Não muda o saldo do mês — a recorrência conta uma vez, caindo
   /// no dia que cair. Serve para mostrar a data prevista; num mês mais curto
   /// que o dia escolhido, a projeção exibe o último dia do mês.
-  diaDoMes  Int      @map("dia_do_mes")
+  diaDoMes Int @map("dia_do_mes")
 
   /// Desligar em vez de apagar: uma assinatura cancelada some da projeção
   /// mas continua no histórico.
-  ativa     Boolean  @default(true)
+  ativa Boolean @default(true)
 
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  criadoEm DateTime @default(now()) @map("criado_em")
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
@@ -211,25 +212,25 @@ model Recorrencia {
 /// A cotação atual não fica aqui de propósito: preço guardado envelhece em
 /// minutos e passaria a mentir sobre o patrimônio.
 model Operacao {
-  id        Int      @id @default(autoincrement())
-  usuarioId Int      @map("usuario_id")
+  id        Int @id @default(autoincrement())
+  usuarioId Int @map("usuario_id")
 
   /// Código na fonte de cotação: PETR4.SA, BTC-USD, HGLG11.SA.
-  ativo     String
+  ativo String
 
   /// Para somar a carteira por tipo de ativo.
-  classe    ClasseDeAtivo
+  classe ClasseDeAtivo
 
-  tipo      TipoDeOperacao
-  data      DateTime @db.Date
+  tipo TipoDeOperacao
+  data DateTime       @db.Date
 
   /// 8 casas porque cripto se compra em fração: 0.00042 BTC é uma posição.
   quantidade Decimal @db.Decimal(18, 8)
 
   /// O que saiu do bolso (compra) ou entrou nele (venda), taxas incluídas.
-  valor     Decimal @db.Decimal(12, 2)
+  valor Decimal @db.Decimal(12, 2)
 
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  criadoEm DateTime @default(now()) @map("criado_em")
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
@@ -253,6 +254,7 @@ enum ClasseDeAtivo {
   ETF
   OUTRO
 }
+
 /// Se o dinheiro já se moveu. Um valor só serve para gasto e ganho: o rótulo
 /// na tela é que muda — "A pagar/Pago" para gasto, "A receber/Recebido" para
 /// ganho. Dois enums separados diriam a mesma coisa duas vezes.
@@ -271,4 +273,78 @@ enum ClassificacaoGasto {
 enum TipoTransacao {
   GASTO
   GANHO
+}
+
+/// Dinheiro emprestado, adiantado ou rateado com alguém — a aba
+/// "A receber e a pagar".
+///
+/// O que separa isto de uma `Transacao` com status PENDENTE é a DATA: um
+/// lançamento a pagar tem dia certo e por isso entra no balanço do mês. Aqui
+/// não se sabe quando: "o João me deve 200" não pertence a mês nenhum, e
+/// forçá-lo a ter uma data faria o Dashboard mentir todo mês em que a conta
+/// não fosse quitada.
+///
+/// Por isso esta tabela também não conversa com o balanço. Emprestar dinheiro
+/// não é gasto — é dinheiro que mudou de lugar e volta.
+model Acerto {
+  id        Int @id @default(autoincrement())
+  usuarioId Int @map("usuario_id")
+
+  tipo TipoDeAcerto
+
+  /// Com quem é o acerto. Texto livre, e não uma tabela de pessoas: os nomes
+  /// que aparecem aqui são poucos e escritos do jeito que a pessoa chama cada
+  /// um ("meu pai", "Ju do trabalho"). A tela sugere os já usados.
+  pessoa String
+
+  /// O valor ORIGINAL, que nunca muda. O quanto ainda falta é ele menos as
+  /// baixas — guardar um "saldo" à parte criaria dois números para manter em
+  /// dia, e um dia eles discordariam.
+  valor Decimal @db.Decimal(12, 2)
+
+  /// Para que serviu ("gasolina da viagem"). Opcional: às vezes o nome da
+  /// pessoa e o valor já contam a história inteira.
+  descricao String?
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// Cada pagamento ou recebimento parcial.
+  baixas Baixa[]
+
+  // A tela sempre pede "os acertos deste usuário", separando por tipo.
+  @@index([usuarioId, tipo])
+  @@map("acertos")
+}
+
+/// Uma parcela paga ou recebida de um acerto: "paguei 50 ao João em 03/09".
+///
+/// Guardar cada baixa, em vez de só descontar do valor, é o que responde
+/// "quando foi que eu paguei?" — que é metade do motivo de a aba existir.
+model Baixa {
+  id       Int @id @default(autoincrement())
+  acertoId Int @map("acerto_id")
+
+  /// Só o dia, sem hora, pelo mesmo motivo das transações: fuso horário não
+  /// pode empurrar um pagamento para o dia anterior.
+  data DateTime @db.Date
+
+  valor Decimal @db.Decimal(12, 2)
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  // Apagar o acerto apaga o histórico dele junto: sem o acerto, as baixas não
+  // querem dizer nada.
+  acerto Acerto @relation(fields: [acertoId], references: [id], onDelete: Cascade)
+
+  // "As baixas deste acerto, em ordem" é a única consulta que existe aqui.
+  @@index([acertoId, data])
+  @@map("baixas")
+}
+
+/// De que lado o dinheiro está. RECEBER = alguém me deve; PAGAR = eu devo.
+enum TipoDeAcerto {
+  RECEBER
+  PAGAR
 }
