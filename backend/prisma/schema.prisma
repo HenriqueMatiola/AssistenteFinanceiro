@@ -87,6 +87,7 @@ model Usuario {
   recorrencias Recorrencia[]
   operacoes    Operacao[]
   acertos      Acerto[]
+  sugestoes    Sugestao[]
 
   @@map("usuarios")
 }
@@ -98,6 +99,21 @@ model Transacao {
 
   /// Só o dia, sem hora: evita que fuso horário jogue o lançamento para outro mês.
   data DateTime @db.Date
+
+  /// Quando o dinheiro de fato se move, se não for no dia do lançamento.
+  ///
+  /// Uma compra feita em 05/10 e paga em 10/11 tem `data` 05/10 e `vencimento`
+  /// 10/11. Nulo quer dizer "no mesmo dia", que é o caso comum.
+  ///
+  /// É ELE que decide em qual mês o lançamento pesa no balanço: o Dashboard
+  /// responde "quanto me resta este mês", e para isso vale o dia em que o
+  /// dinheiro sai do bolso, não o dia da compra. Sem vencimento, vale a `data`
+  /// — por isso todo lançamento antigo continua exatamente onde estava.
+  ///
+  /// Não confundir com `status`: ele diz SE já aconteceu, e este diz QUANDO
+  /// vai acontecer. Uma conta pode estar pendente sem data prevista, e pode
+  /// ter vencimento e já estar paga.
+  vencimento DateTime? @db.Date
 
   /// O que foi (Netflix, Cabelo). A categoria diz de que grupo é; a
   /// descrição diz qual item. Sem ela, distinguir Netflix de Spotify exigiria
@@ -347,4 +363,40 @@ model Baixa {
 enum TipoDeAcerto {
   RECEBER
   PAGAR
+}
+
+/// Um valor que a pessoa já usou num campo de texto livre, guardado para ser
+/// oferecido da próxima vez.
+///
+/// O app não traz lista pronta de categoria nem de forma de pagamento: as de
+/// cada um são outras, e uma lista de fábrica só enche o campo de opções que
+/// ninguém escolheu. A lista nasce vazia e cresce sozinha conforme a pessoa
+/// lança — e ela pode apagar o que não quer mais ver.
+///
+/// Apagar a sugestão NÃO mexe nos lançamentos que a usaram: o que foi gasto em
+/// "Mercado" continua em "Mercado". Some só do campo de digitar.
+model Sugestao {
+  id        Int @id @default(autoincrement())
+  usuarioId Int @map("usuario_id")
+
+  campo CampoComSugestao
+  valor String
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// Rede de segurança contra a mesma opção entrar duas vezes. A comparação
+  /// que de fato vale é feita sem diferenciar maiúsculas, no código — senão
+  /// "Mercado" e "mercado" virariam duas linhas na lista.
+  @@unique([usuarioId, campo, valor])
+  @@map("sugestoes")
+}
+
+/// Em qual campo a sugestão aparece. Separados porque as listas não se
+/// misturam: "Pix" não é uma categoria, e "Mercado" não é uma forma de pagar.
+enum CampoComSugestao {
+  CATEGORIA
+  FORMA_DE_PAGAMENTO
+  PESSOA
 }

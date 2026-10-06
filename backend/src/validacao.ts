@@ -85,6 +85,28 @@ export function validarData(bruto: unknown): Date {
   return data;
 }
 
+/**
+ * Quando o dinheiro se move, se não for no dia do lançamento. Opcional.
+ *
+ * Recusa vencimento ANTERIOR à data do lançamento: pagar antes de a conta
+ * existir não é um caso de uso, é um dedo no campo errado — e o estrago seria
+ * silencioso, jogando a despesa para um mês já fechado. O mesmo dia passa,
+ * porque é só um jeito explícito de dizer "é à vista".
+ */
+export function validarVencimento(bruto: unknown, dataDoLancamento: Date): Date | null {
+  if (bruto === undefined || bruto === null || bruto === '') {
+    return null;
+  }
+
+  const vencimento = validarData(bruto);
+
+  if (vencimento.getTime() < dataDoLancamento.getTime()) {
+    throw new ErroDeValidacao('O vencimento não pode ser anterior à data do lançamento.');
+  }
+
+  return vencimento;
+}
+
 // --- Campos de dinheiro -----------------------------------------------------
 
 /**

@@ -51,6 +51,27 @@
      superfície, do mesmo jeito que `--ambar-fundo` dilui o âmbar. */
   --saida-fundo: #fbe9e7;
 
+  /* --- Séries do gráfico de categorias ---
+     Seis tons para as seis fatias da rosca de gastos. Categoria é um rótulo,
+     não uma grandeza: não há ordem entre "Moradia" e "Lazer", então são seis
+     MATIZES diferentes, e não um mesmo tom em seis intensidades.
+
+     A ordem é fixa — a fatia 1 é sempre este azul. Se ela girasse conforme o
+     ranking do mês, a mesma categoria mudaria de cor de um mês para o outro e
+     a cor pararia de significar qualquer coisa.
+
+     Validados com o script da skill de dataviz contra a superfície do cartão
+     (#ffffff aqui, #121f21 no escuro): faixa de luminosidade, piso de croma,
+     separação para daltonismo (protanopia e tritanopia) e contraste. O tema
+     escuro NÃO é o claro clareado no automático — são os mesmos matizes
+     reescalados para o fundo escuro, cada um conferido de novo. */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+  --serie-4: #eda100;
+  --serie-5: #e87ba4;
+  --serie-6: #008300;
+
   /* --- Medidas --- */
   --raio: 10px;
   --raio-pequeno: 6px;
@@ -107,6 +128,17 @@
     --ambar-halo: rgba(232, 163, 61, 0.45);
     --saida-fundo: #331a18;
     --mes-ativo: var(--petroleo-600);
+
+    /* Os mesmos seis matizes das séries, reescalados para o fundo escuro e
+       validados de novo contra ele — os tons claros perderiam contraste aqui,
+       e dois deles chegariam perto demais um do outro para quem tem
+       daltonismo. */
+    --serie-1: #3987e5;
+    --serie-2: #d95926;
+    --serie-3: #199e70;
+    --serie-4: #c98500;
+    --serie-5: #d55181;
+    --serie-6: #008300;
   }
 }
 

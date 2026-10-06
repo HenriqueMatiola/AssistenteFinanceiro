@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   buscarGastosPorCategoria,
   buscarGastosPorFormaDePagamento,
@@ -8,12 +8,8 @@ import {
   type ResumoDoMes,
 } from '../api.ts';
 import { formatarDinheiro, formatarMes } from '../formato.ts';
-
-/**
- * Uma categoria minúscula ao lado de uma enorme viraria uma barra de 1 pixel,
- * que não se distingue de "nada". Este mínimo garante que ela apareça.
- */
-const LARGURA_MINIMA_DA_BARRA = 1.5;
+import { montarFatias } from '../fatias.ts';
+import GraficoDeRosca from '../componentes/GraficoDeRosca.tsx';
 
 interface Props {
   /** Mês em foco, escolhido na trilha do topo. Formato "AAAA-MM". */
@@ -60,10 +56,25 @@ function Dashboard({ mes }: Props) {
     };
   }, [mes]);
 
-  // A lista já vem ordenada do maior para o menor, então o primeiro item é a
-  // régua: ele vira a barra de 100% e todos os outros são medidos contra ele.
-  const maiorGasto = categorias[0]?.total ?? 0;
+  // As fatias das duas roscas. As listas já vêm ordenadas do maior para o
+  // menor, e `montarFatias` cuida de agrupar as menores e escolher as cores.
+  const fatiasPorCategoria = useMemo(
+    () => montarFatias(categorias.map((c) => ({ rotulo: c.categoria, valor: c.total }))),
+    [categorias]
+  );
+
+  const fatiasPorForma = useMemo(
+    () =>
+      montarFatias(
+        // O pendente viaja junto: é ele que vira a nota "ainda a pagar" na
+        // legenda, e sem ela a rosca perderia o que a tabela antiga dizia.
+        formas.map((f) => ({ rotulo: f.forma, valor: f.total, pendente: f.pendente }))
+      ),
+    [formas]
+  );
+
   const totalGasto = categorias.reduce((soma, c) => soma + c.total, 0);
+  const totalPorForma = formas.reduce((soma, f) => soma + f.total, 0);
   const previstas = resumo?.recorrenciasPrevistas ?? [];
 
   if (erro) {
@@ -180,83 +191,26 @@ function Dashboard({ mes }: Props) {
       <section className="cartao">
         <h2>Gastos por categoria</h2>
 
-        {categorias.length === 0 ? (
+        {fatiasPorCategoria.length === 0 ? (
           <p className="vazio">Nenhum gasto lançado em {formatarMes(mes)}.</p>
         ) : (
-          <ul className="grafico-de-barras">
-            {categorias.map((c) => {
-              const fatia = Math.round((c.total / totalGasto) * 100);
-
-              return (
-                <li key={c.categoria} className="barra">
-                  <div className="barra__topo">
-                    <span className="barra__nome">{c.categoria}</span>
-                    <span className="barra__valor">
-                      {formatarDinheiro(c.total)}
-                      <span className="barra__fatia"> · {fatia}%</span>
-                    </span>
-                  </div>
-
-                  {/* Decorativo: o valor já está escrito acima em texto, então
-                      quem usa leitor de tela não perde nada ao pular a barra. */}
-                  <div className="barra__trilho" aria-hidden="true">
-                    <div
-                      className="barra__preenchimento"
-                      style={{
-                        width: `${Math.max(
-                          (c.total / maiorGasto) * 100,
-                          LARGURA_MINIMA_DA_BARRA
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <GraficoDeRosca fatias={fatiasPorCategoria} total={totalGasto} />
         )}
       </section>
 
       <section className="cartao">
         <h2>Por forma de pagamento</h2>
 
-        {formas.length === 0 ? (
+        {fatiasPorForma.length === 0 ? (
           <p className="vazio">Nenhum gasto lançado em {formatarMes(mes)}.</p>
         ) : (
           <>
             <p className="explicacao">
-              Quanto sai por cada meio. A coluna "ainda a pagar" é, na prática, o
-              que falta fechar da fatura.
+              Quanto sai por cada meio. O "falta" em âmbar é o que ainda não
+              foi pago — na prática, o que resta fechar daquela fatura.
             </p>
 
-            <div className="tabela-rolavel">
-              <table className="tabela">
-                <thead>
-                  <tr>
-                    <th>Forma</th>
-                    <th className="alinhado-direita">Total</th>
-                    <th className="alinhado-direita">Ainda a pagar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {formas.map((f) => (
-                    <tr key={f.forma}>
-                      <td>{f.forma}</td>
-                      <td data-rotulo="Total" className="alinhado-direita gasto">{formatarDinheiro(f.total)}</td>
-                      <td data-rotulo="Ainda a pagar" className="alinhado-direita">
-                        {f.pendente > 0 ? (
-                          <span className="situacao situacao--pendente">
-                            {formatarDinheiro(f.pendente)}
-                          </span>
-                        ) : (
-                          <span className="vazio">tudo pago</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <GraficoDeRosca fatias={fatiasPorForma} total={totalPorForma} />
           </>
         )}
       </section>

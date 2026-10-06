@@ -10,6 +10,7 @@ import { prisma } from './prisma.ts';
 import { mesAceitaPrevisao, recorrenciasPendentes } from './previsao.ts';
 import { dataPrevista } from './projecao.ts';
 import { mesAtualUTC, type IntervaloDeMes } from './validacao.ts';
+import { dentroDoMes } from './mesDoLancamento.ts';
 import type { ClassificacaoGasto, TipoTransacao } from './generated/prisma/enums.ts';
 
 /** Uma recorrência que ainda não virou lançamento no mês consultado. */
@@ -50,7 +51,7 @@ export async function previsaoDoMes(
     // Quais recorrências já geraram lançamento dentro do mês. Só o id
     // interessa, então pedimos só ele.
     prisma.transacao.findMany({
-      where: { usuarioId, data: intervalo, recorrenciaId: { not: null } },
+      where: { usuarioId, recorrenciaId: { not: null }, ...dentroDoMes(intervalo) },
       select: { recorrenciaId: true },
       distinct: ['recorrenciaId'],
     }),

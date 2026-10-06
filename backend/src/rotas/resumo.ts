@@ -20,6 +20,7 @@ import { intervaloDoMes, mesAtualUTC } from '../validacao.ts';
 import { responderErro } from '../respostas.ts';
 import { totalPrevisto } from '../previsao.ts';
 import { previsaoDoMes } from '../previsaoDoMes.ts';
+import { antesDoMes, dentroDoMes } from '../mesDoLancamento.ts';
 import { sobraQueEntraNoMes } from '../sobra.ts';
 import { StatusTransacao, TipoTransacao } from '../generated/prisma/enums.ts';
 
@@ -85,7 +86,7 @@ rotasDeResumo.get('/', async (req, res) => {
       // A sobra lançada fica de fora: ela não é receita nem despesa do mês.
       prisma.transacao.groupBy({
         by: ['tipo', 'status'],
-        where: { usuarioId, data: intervalo, ehSobraDoMesAnterior: false },
+        where: { usuarioId, ehSobraDoMesAnterior: false, ...dentroDoMes(intervalo) },
         _sum: { valor: true },
       }),
 
@@ -96,7 +97,7 @@ rotasDeResumo.get('/', async (req, res) => {
       // dívida deste mês — quem corta em zero, e por quê, é `sobra.ts`.
       prisma.transacao.groupBy({
         by: ['tipo'],
-        where: { usuarioId, data: { lt: intervalo.gte } },
+        where: { usuarioId, ...antesDoMes(intervalo) },
         _sum: { valor: true },
       }),
 
@@ -105,7 +106,7 @@ rotasDeResumo.get('/', async (req, res) => {
       // partida à mão.
       prisma.transacao.groupBy({
         by: ['tipo'],
-        where: { usuarioId, data: intervalo, ehSobraDoMesAnterior: true },
+        where: { usuarioId, ehSobraDoMesAnterior: true, ...dentroDoMes(intervalo) },
         _sum: { valor: true },
       }),
 
@@ -197,7 +198,7 @@ rotasDeResumo.get('/categorias', async (req, res) => {
         where: {
           usuarioId,
           tipo: TipoTransacao.GASTO,
-          data: intervalo,
+          ...dentroDoMes(intervalo),
           ehSobraDoMesAnterior: false,
         },
         _sum: { valor: true },
@@ -256,7 +257,7 @@ rotasDeResumo.get('/formas-de-pagamento', async (req, res) => {
         where: {
           usuarioId,
           tipo: TipoTransacao.GASTO,
-          data: intervalo,
+          ...dentroDoMes(intervalo),
           ehSobraDoMesAnterior: false,
         },
         _sum: { valor: true },

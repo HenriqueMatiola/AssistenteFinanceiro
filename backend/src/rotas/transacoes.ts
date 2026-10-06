@@ -23,9 +23,12 @@ import {
   validarStatus,
   validarTipo,
   validarValor,
+  validarVencimento,
 } from '../validacao.ts';
 import { responderErro } from '../respostas.ts';
 import { datasDasParcelas } from '../parcelas.ts';
+import { dentroDoMes, maisRecentePrimeiro } from '../mesDoLancamento.ts';
+import { CampoComSugestao, registrarSugestao } from '../sugestoes.ts';
 
 export const rotasDeTransacoes = Router();
 
@@ -62,6 +65,7 @@ async function exigirTransacaoDoUsuario(
 interface TransacaoDoBanco {
   id: number;
   data: Date;
+  vencimento: Date | null;
   descricao: string;
   valor: { toNumber(): number };
   categoria: string;
@@ -84,6 +88,7 @@ function paraResposta(t: TransacaoDoBanco) {
   return {
     id: t.id,
     data: t.data.toISOString().slice(0, 10),
+    vencimento: t.vencimento ? t.vencimento.toISOString().slice(0, 10) : null,
     descricao: t.descricao,
     valor: t.valor.toNumber(),
     categoria: t.categoria,
@@ -110,7 +115,7 @@ rotasDeTransacoes.get('/', async (req, res) => {
       usuarioId: number;
       tipo?: TipoTransacao;
       status?: StatusTransacao;
-      data?: { gte: Date; lt: Date };
+      OR?: ReturnType<typeof dentroDoMes>['OR'];
     } = { usuarioId: idDoUsuarioLogado(req) };
 
     const { mes, tipo, status } = req.query;
@@ -124,15 +129,18 @@ rotasDeTransacoes.get('/', async (req, res) => {
     }
 
     if (typeof mes === 'string' && mes !== '') {
-      filtro.data = intervaloDoMes(mes);
+      // O mês de um lançamento é o do VENCIMENTO quando ele existe: uma compra
+      // de outubro paga em novembro aparece na lista de novembro, que é quando
+      // o dinheiro sai. Sem vencimento, vale a data — e por isso tudo que foi
+      // lançado antes deste campo existir continua no mês de sempre.
+      filtro.OR = dentroDoMes(intervaloDoMes(mes)).OR;
     }
 
-    const transacoes = await prisma.transacao.findMany({
-      where: filtro,
-      orderBy: [{ data: 'desc' }, { id: 'desc' }],
-    });
+    const transacoes = await prisma.transacao.findMany({ where: filtro });
 
-    res.json({ transacoes: transacoes.map(paraResposta) });
+    // A ordenação sai do banco e vem para cá pelo mesmo motivo: ordenar por
+    // "vencimento, ou a data quando ele for nulo" exigiria SQL escrito à mão.
+    res.json({ transacoes: maisRecentePrimeiro(transacoes).map(paraResposta) });
   } catch (erro) {
     responderErro(res, erro, 'listar as transações');
   }
@@ -154,6 +162,7 @@ rotasDeTransacoes.post('/', async (req, res) => {
 
     const usuarioId = idDoUsuarioLogado(req);
     const dataInicial = validarData(corpo['data']);
+    const vencimentoInicial = validarVencimento(corpo['vencimento'], dataInicial);
     const ehSobraDoMesAnterior = corpo['ehSobraDoMesAnterior'] === true;
 
     // Uma sobra do mês passado é um valor único, não uma compra a prazo.
@@ -179,9 +188,26 @@ rotasDeTransacoes.post('/', async (req, res) => {
       ehSobraDoMesAnterior,
     };
 
+    /*
+     * A categoria e a forma digitadas passam a ser oferecidas da próxima vez.
+     *
+     * Acontece aqui, e não numa rota própria de "salvar sugestão": guardar
+     * seria mais um passo para fazer o que lançar já diz. A sobra fica de
+     * fora — a categoria dela é escolhida pelo app, não pela pessoa, e poluiria
+     * a lista com um nome que ninguém digitou.
+     */
+    if (!ehSobraDoMesAnterior) {
+      await registrarSugestao(usuarioId, CampoComSugestao.CATEGORIA, comuns.categoria);
+      await registrarSugestao(
+        usuarioId,
+        CampoComSugestao.FORMA_DE_PAGAMENTO,
+        comuns.formaDePagamento
+      );
+    }
+
     if (quantidadeDeParcelas === 1) {
       const transacao = await prisma.transacao.create({
-        data: { ...comuns, data: dataInicial, status: statusPedido },
+        data: { ...comuns, data: dataInicial, vencimento: vencimentoInicial, status: statusPedido },
       });
 
       res.status(201).json({ transacoes: [paraResposta(transacao)] });
@@ -192,9 +218,22 @@ rotasDeTransacoes.post('/', async (req, res) => {
     // sem caçar parcela por parcela.
     const grupoDeParcelas = randomUUID();
 
-    const parcelas = datasDasParcelas(dataInicial, quantidadeDeParcelas).map((data, indice) => ({
+    /*
+     * O que anda de mês em mês é a data que MANDA no balanço.
+     *
+     * Com vencimento informado, quem anda é ele, e a data da compra fica a
+     * mesma em todas as parcelas — a compra aconteceu num dia só, e é isso que
+     * a tela passa a mostrar.
+     *
+     * Sem vencimento, quem anda é a própria data, como as parcelas sempre
+     * funcionaram. Mexer nisso jogaria de mês tudo que já está lançado.
+     */
+    const datas = datasDasParcelas(vencimentoInicial ?? dataInicial, quantidadeDeParcelas);
+
+    const parcelas = datas.map((dataDaParcela, indice) => ({
       ...comuns,
-      data,
+      data: vencimentoInicial ? dataInicial : dataDaParcela,
+      vencimento: vencimentoInicial ? dataDaParcela : null,
       // Só a primeira parcela pode já estar paga; as outras ainda nem
       // venceram, então nascem pendentes independentemente do que foi pedido.
       status: indice === 0 ? statusPedido : StatusTransacao.PENDENTE,
@@ -209,7 +248,8 @@ rotasDeTransacoes.post('/', async (req, res) => {
 
     const criadas = await prisma.transacao.findMany({
       where: { grupoDeParcelas, usuarioId },
-      orderBy: { data: 'asc' },
+      // Pela ordem das parcelas: com vencimento, a data é a mesma em todas.
+      orderBy: { parcelaAtual: 'asc' },
     });
 
     res.status(201).json({ transacoes: criadas.map(paraResposta) });

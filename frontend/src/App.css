@@ -1653,57 +1653,10 @@ button {
   color: var(--entrada);
 }
 
-/* ==========================================================================
-   Gráfico de barras
-   ========================================================================== */
-
-.grafico-de-barras {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.barra__topo {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1rem;
-  margin-bottom: 0.3rem;
-}
-
-.barra__nome {
-  font-size: 0.9rem;
-}
-
-.barra__valor {
-  font-family: var(--fonte-dados);
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
+/* Sobrou do gráfico de barras que a rosca substituiu: o percentual miúdo ao
+   lado de um valor. Investimentos ainda o usa na variação de cada ativo. */
 .barra__fatia {
   color: var(--texto-suave);
-}
-
-.barra__trilho {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--superficie-2);
-  border: 1px solid var(--borda);
-  overflow: hidden;
-}
-
-/* Categorias de gasto são nomes, não uma escala: todas as barras usam a mesma
-   cor. Quem distingue uma da outra é o comprimento e o rótulo ao lado. */
-.barra__preenchimento {
-  height: 100%;
-  background: var(--saida);
-  border-radius: 999px;
-  transition: width 260ms ease;
 }
 
 /* ==========================================================================
@@ -2438,5 +2391,222 @@ code {
 
   .acerto__form .campo {
     flex-basis: 100%;
+  }
+}
+
+/* ==========================================================================
+   Rosca de gastos por categoria
+   ========================================================================== */
+
+/* Rosca e legenda lado a lado enquanto couber. A rosca não estica: ela tem
+   tamanho próprio, e quem ocupa a sobra é a legenda, que é texto. */
+.rosca {
+  display: flex;
+  align-items: center;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+}
+
+.rosca__desenho {
+  position: relative;
+  flex-shrink: 0;
+  width: 170px;
+  height: 170px;
+}
+
+.rosca__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* O vão entre as fatias é desenhado pela própria superfície do cartão
+   aparecendo por baixo — por isso nenhuma fatia tem contorno. Contorno
+   engrossaria as pequenas e mentiria sobre o tamanho delas. */
+.rosca__fatia {
+  transition: opacity 160ms ease;
+}
+
+/* Sob o cursor, as outras recuam em vez de a escolhida acender: clarear uma
+   cor validada estragaria o contraste que ela tem contra o fundo. */
+.rosca__fatia--apagada {
+  opacity: 0.3;
+}
+
+/* --- O buraco do meio --- */
+
+.rosca__miolo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  /* O miolo é texto parado no centro; deixá-lo capturar o mouse criaria um
+     ponto morto bem onde a pessoa passa para ir de uma fatia a outra. */
+  pointer-events: none;
+}
+
+.rosca__miolo-rotulo {
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+
+/* O `font-size` aqui é só o caso comum: o componente o sobrescreve inline
+   quando o total é comprido demais para o buraco, encolhendo por faixa de
+   caracteres. Ver `tamanhoDoTotal` em GraficoDeRosca.tsx. */
+.rosca__miolo-valor {
+  font-family: var(--fonte-dados);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* --- A legenda --- */
+
+.rosca__legenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* Cresce para ocupar a sobra, mas aceita encolher: sem o `min-width: 0`,
+     um nome de categoria comprido empurraria a rosca para fora do cartão. */
+  flex: 1 1 15rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rosca__item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 0.86rem;
+  transition: opacity 160ms ease;
+}
+
+.rosca__item--apagado {
+  opacity: 0.45;
+}
+
+/* O quadradinho de cor. Pequeno e com canto arredondado, do mesmo jeito que
+   as pontas das barras do app. É o que liga o nome à fatia — e é por isso que
+   o nome nunca é escrito na cor da série: cor fica na marca, texto fica com a
+   tinta de texto, senão metade dos rótulos perderia contraste. */
+.rosca__marcador {
+  flex-shrink: 0;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 3px;
+  /* Sobe um fio para alinhar com a altura-x do rótulo ao lado. */
+  transform: translateY(0.05rem);
+}
+
+/* O bloco de texto cede espaço antes do valor: cortar "Alimentação" ainda
+   deixa a linha legível; cortar "R$ 1.2…" não. Ele empilha o nome e, quando
+   existe, a nota do que falta pagar. */
+.rosca__texto {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rosca__rotulo {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* O que falta fechar da fatura. Âmbar é a cor que o app reserva para o que
+   ainda exige uma ação — a mesma dos lançamentos pendentes. */
+.rosca__pendente {
+  display: block;
+  margin-top: 0.1rem;
+  font-family: var(--fonte-dados);
+  font-size: 0.74rem;
+  color: var(--ambar);
+}
+
+.rosca__valor {
+  flex-shrink: 0;
+  font-family: var(--fonte-dados);
+  font-variant-numeric: tabular-nums;
+}
+
+.rosca__fracao {
+  color: var(--texto-suave);
+}
+
+/* Numa coluna estreita a rosca sobe e a legenda vai inteira embaixo dela. */
+@media (max-width: 560px) {
+  .rosca {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.1rem;
+  }
+
+  .rosca__desenho {
+    align-self: center;
+  }
+}
+
+/* Quem pediu menos movimento não precisa do esmaecer das fatias. */
+@media (prefers-reduced-motion: reduce) {
+  .rosca__fatia,
+  .rosca__item {
+    transition: none;
+  }
+}
+
+
+/* --- O "x" que tira uma opção da lista de sugestões --- */
+
+/* O rótulo ocupa a sobra para o check e o "x" ficarem colados à direita: com
+   três filhos, o `space-between` da linha espalharia os dois pela largura. */
+.combobox__opcao > span:first-child {
+  flex: 1 1 auto;
+}
+
+/* Discreto por padrão e firme sob o cursor. Visível sempre — é a única pista
+   de que dá para limpar a lista —, mas sem um vermelho gritando em cada linha
+   de um campo que a pessoa abriu só para escolher uma categoria. */
+.combobox__excluir {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.22rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--texto-suave);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.combobox__opcao:hover .combobox__excluir,
+.combobox__opcao[data-selected='true'] .combobox__excluir {
+  opacity: 1;
+}
+
+.combobox__excluir:hover,
+.combobox__excluir:focus-visible {
+  opacity: 1;
+  color: var(--saida);
+  background: var(--saida-fundo);
+}
+
+.combobox__excluir svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combobox__excluir {
+    transition: none;
   }
 }

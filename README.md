@@ -171,8 +171,8 @@ está barrado.
 | `POST /api/senha/codigo` | **Pública.** Recebe `{email}` e manda um código de 6 dígitos para ele. Responde SEMPRE a mesma coisa, exista ou não a conta — senão viraria um jeito de descobrir quem tem conta aqui |
 | `POST /api/senha/redefinir` | **Pública.** Recebe `{email, codigo, novaSenha}`, troca a senha e devolve `{token, usuario}` já logado. O código morre no uso; vale 15 min e aguenta 5 palpites |
 | `POST /api/email/confirmar` | **Protegida.** Recebe `{codigo}`, confere contra o hash guardado e devolve `{usuario}` com `emailVerificado: true`. O código vale 15 minutos e aguenta 5 palpites |
-| `GET /api/transacoes` | **Protegida.** Lista os lançamentos do usuário do token. Filtros opcionais: `?mes=2026-08` e `?tipo=GASTO` |
-| `POST /api/transacoes` | **Protegida.** Cria um lançamento. Com `parcelas: 12`, cria as 12 de uma vez; com `ehSobraDoMesAnterior: true`, o valor vira sobra em vez de entrada. Devolve sempre uma lista |
+| `GET /api/transacoes` | **Protegida.** Lista os lançamentos do usuário do token. Filtros opcionais: `?mes=2026-08` e `?tipo=GASTO`. O mês é o do **vencimento** quando ele existe |
+| `POST /api/transacoes` | **Protegida.** Cria um lançamento. `vencimento` é opcional e não pode ser anterior à `data`. Com `parcelas: 12`, cria as 12 de uma vez (com vencimento, a data da compra fica fixa e quem anda é o vencimento); com `ehSobraDoMesAnterior: true`, o valor vira sobra. Devolve sempre uma lista |
 | `PATCH /api/transacoes/:id` | **Protegida.** Marca como pago/recebido: `{status: "CONCLUIDA"}` |
 | `DELETE /api/transacoes/:id` | **Protegida.** Apaga o lançamento; com `?todasAsParcelas=true`, apaga a compra parcelada inteira |
 | `GET /api/resumo` | **Protegida.** Balanço do mês: sobra anterior, entradas, saídas, saldo, disponível, e a composição em realizado / lançado-pendente / previsto pelas recorrências. `?mes=2026-08` |
@@ -195,6 +195,8 @@ está barrado.
 | `DELETE /api/acertos/:id` | **Protegida.** Apaga o acerto e o histórico dele junto |
 | `POST /api/acertos/:id/baixas` | **Protegida.** Registra um pagamento parcial `{data, valor}`. Recusa valor maior que o saldo. Devolve o acerto inteiro, já recalculado |
 | `DELETE /api/acertos/:id/baixas/:baixaId` | **Protegida.** Desfaz um pagamento registrado errado, sem perder o resto do histórico |
+| `GET /api/sugestoes` | **Protegida.** As opções já usadas nos campos de texto livre, agrupadas por campo (`CATEGORIA`, `FORMA_DE_PAGAMENTO`, `PESSOA`). Cada uma vem com `id`, para poder ser apagada |
+| `DELETE /api/sugestoes/:id` | **Protegida.** Tira a opção do campo de digitar. NÃO mexe nos lançamentos que a usaram. Não existe rota de CRIAR: quem alimenta a lista são as rotas de lançar |
 
 ## Banco de dados
 
@@ -318,6 +320,13 @@ Além do plano:
   emprestar não é gastar, e um acerto sem data não pertence a mês nenhum.
 - Confirmação de e-mail obrigatória para usar o app (quando o envio está
   configurado), com recuperação de senha pelo mesmo caminho.
+- **Vencimento do lançamento**: um gasto feito em outubro e pago em novembro
+  guarda as duas datas, e **pesa no mês do vencimento** — é quando o dinheiro
+  sai. Sem vencimento, vale a data, então nada do que já existia mudou de mês.
+- **Campos de texto livre sem lista de fábrica**: categoria, forma de pagamento
+  e "quem" começam vazios e vão guardando o que cada pessoa digita. Cada opção
+  tem um "x" para sair da lista — e apagá-la não mexe nos lançamentos que a
+  usaram.
 
 ## O que vem depois
 

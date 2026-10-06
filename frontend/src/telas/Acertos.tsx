@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Plus, Trash, X } from '@phosphor-icons/react';
 import {
   criarAcerto,
@@ -18,6 +18,7 @@ import {
   numeroDaEntradaMonetaria,
 } from '../formato.ts';
 import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
+import { useSugestoes } from '../useSugestoes.ts';
 import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 import SeletorDeData from '../componentes/SeletorDeData.tsx';
 
@@ -89,17 +90,19 @@ function Acertos() {
     setVersaoDaLista((n) => n + 1);
   }
 
-  /**
-   * As pessoas que já aparecem na lista viram sugestões do campo.
+  /*
+   * Os nomes que já foram usados, oferecidos no campo "Quem".
    *
-   * É o que evita que "João" e "Joao" virem duas pessoas diferentes nos totais
-   * — o backend não tem como saber que são a mesma, então quem resolve isso é
-   * a tela, oferecendo o nome que já existe antes de a pessoa digitar outro.
+   * É o que evita que "João" e "Joao" virem duas pessoas diferentes nos
+   * totais: a lista oferece o nome que já existe antes de a pessoa digitar
+   * outro.
+   *
+   * Antes isto saía dos próprios acertos da tela. Agora vem da lista guardada,
+   * que muda duas coisas: o nome continua sendo oferecido depois de o último
+   * acerto com ele ser quitado e apagado, e dá para tirar da lista quem você
+   * não vai mais acertar nada — sem apagar o histórico de quando acertou.
    */
-  const pessoasJaUsadas = useMemo(
-    () => [...new Set(acertos.map((a) => a.pessoa))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [acertos]
-  );
+  const { sugestoes, excluir: excluirSugestao, recarregar: recarregarSugestoes } = useSugestoes();
 
   const emAberto = acertos.filter((a) => !a.quitado);
   const quitados = acertos.filter((a) => a.quitado);
@@ -140,6 +143,8 @@ function Acertos() {
       setPessoa('');
       setValor('');
       setDescricao('');
+      // O nome recém-digitado acabou de virar opção no backend.
+      recarregarSugestoes();
       recarregar();
     } catch (e) {
       setErroDoFormulario(e instanceof Error ? e.message : 'Não consegui salvar.');
@@ -380,7 +385,8 @@ function Acertos() {
               <CampoComSugestoes
                 valor={pessoa}
                 aoMudar={setPessoa}
-                sugestoes={pessoasJaUsadas}
+                sugestoes={sugestoes.PESSOA}
+                aoExcluir={excluirSugestao}
                 placeholder="Ex: João"
                 rotuloAcessivel="Com quem é o acerto"
                 obrigatorio

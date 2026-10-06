@@ -18,6 +18,7 @@ import { rotasDeRecorrencias } from './rotas/recorrencias.ts';
 import { rotasDeProjecao } from './rotas/projecao.ts';
 import { rotasDeInvestimentos } from './rotas/investimentos.ts';
 import { rotasDeAcertos } from './rotas/acertos.ts';
+import { rotasDeSugestoes } from './rotas/sugestoes.ts';
 import { rotasDePerfil } from './rotas/perfil.ts';
 import {
   rotasDeConfirmacaoDeEmail,
@@ -407,6 +408,10 @@ app.use('/api/investimentos', exigirLogin, exigirEmailConfirmado, rotasDeInvesti
 // pagar". Fica fora do balanço de propósito: um acerto não tem data, então não
 // pertence a mês nenhum.
 app.use('/api/acertos', exigirLogin, exigirEmailConfirmado, rotasDeAcertos);
+
+// As opções que já foram digitadas nos campos de texto livre. Quem as cria são
+// as rotas de lançar; aqui só se lista e se apaga.
+app.use('/api/sugestoes', exigirLogin, exigirEmailConfirmado, rotasDeSugestoes);
 
 const porta = Number(process.env.PORT ?? 3001);
 

@@ -35,24 +35,14 @@ import {
 import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
 import SeletorDeData from '../componentes/SeletorDeData.tsx';
+import { useSugestoes } from '../useSugestoes.ts';
 
-// Sugestões que aparecem ao clicar no campo de categoria. O usuário pode
-// digitar qualquer outra coisa — é só um atalho.
-const CATEGORIAS_SUGERIDAS = [
-  'Alimentação',
-  'Moradia',
-  'Transporte',
-  'Saúde',
-  'Educação',
-  'Lazer',
-  'Salário',
-  'Investimentos',
-  'Outros',
-];
-
-// Gastos aceitam outros meios e cartões; ganhos entram somente por estes três
-// caminhos, para os relatórios não fragmentarem "depósito" em vários nomes.
-const FORMAS_SUGERIDAS = ['Pix', 'Dinheiro', 'Débito', 'Cartão de crédito', 'Boleto'];
+// Ganhos entram apenas por estes três caminhos, e por isso continuam numa
+// lista FECHADA (um select, não um campo de digitar): sem ela, os relatórios
+// fragmentariam "depósito" em meia dúzia de grafias.
+//
+// Categoria e forma de PAGAMENTO são o oposto — campo livre, sem lista de
+// fábrica. O que cada pessoa usa aparece ali conforme ela lança.
 const FORMAS_DE_RECEBIMENTO = ['Pix', 'Dinheiro', 'Depósito em conta'] as const;
 
 /**
@@ -95,6 +85,20 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   // Formulário
   const [descricao, setDescricao] = useState('');
   const [data, setData] = useState(hojeISO());
+  /**
+   * Quando o dinheiro vai sair ou entrar, se não for no dia do lançamento.
+   * Vazio quer dizer "no mesmo dia" — o caso comum.
+   */
+  const [vencimento, setVencimento] = useState("");
+
+  /*
+   * As opções já usadas nos campos de categoria e forma de pagamento.
+   *
+   * A lista nasce vazia e cresce conforme se lança — quem guarda é o backend,
+   * ao receber um valor que ainda não conhecia. Daí o `recarregar` logo depois
+   * de criar: é o que faz a categoria recém-digitada já aparecer na lista.
+   */
+  const { sugestoes, excluir: excluirSugestao, recarregar: recarregarSugestoes } = useSugestoes();
   const [valor, setValor] = useState('');
   const [categoria, setCategoria] = useState('');
   const [tipo, setTipo] = useState<TipoDoFormulario>('GASTO');
@@ -221,6 +225,8 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
       const criadas = await criarTransacao({
         data: dataUsada,
+        // Sobra não tem vencimento: ela é dinheiro que JÁ está na conta.
+        vencimento: ehSobra ? undefined : vencimento || undefined,
         descricao: ehSobra ? DESCRICAO_DA_SOBRA : descricao,
         valor: valorNumerico,
         categoria: ehSobra ? CATEGORIA_DA_SOBRA : categoria,
@@ -235,9 +241,14 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
       if (criadas.length > 1) {
         // Só as parcelas do mês em foco aparecem na lista; sem este aviso,
         // parece que 11 delas se perderam.
+        // Nas parcelas com vencimento, a data da compra é a mesma em todas —
+        // quem anda de mês em mês é o vencimento. O aviso tem que contar o
+        // intervalo que a pessoa reconhece, que é o das cobranças.
+        const quando = (t: Transacao | undefined) => t?.vencimento ?? t?.data ?? data;
+
         setAviso(
-          `${criadas.length} parcelas criadas, de ${formatarData(criadas[0]?.data ?? data)} ` +
-            `a ${formatarData(criadas.at(-1)?.data ?? data)}.`
+          `${criadas.length} parcelas criadas, de ${formatarData(quando(criadas[0]))} ` +
+            `a ${formatarData(quando(criadas.at(-1)))}.`
         );
       }
 
@@ -247,10 +258,19 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
       setValor('');
       setCategoria('');
       setParcelas('1');
+      // A categoria e a forma recém-digitadas acabaram de virar opção no
+      // backend; isto é o que as traz para a lista sem recarregar a página.
+      recarregarSugestoes();
+      setVencimento('');
 
-      // Se o lançamento caiu fora do mês em foco, mostra o mês dele para que
-      // ele não "suma" logo depois de ser criado.
-      const mesDoLancamento = dataUsada.slice(0, 7);
+      /*
+       * Se o lançamento caiu fora do mês em foco, mostra o mês dele para que
+       * ele não "suma" logo depois de ser criado.
+       *
+       * Com vencimento, o mês é o DELE: lançar hoje uma conta que vence mês
+       * que vem leva a tela para o mês que vem, que é onde ela está.
+       */
+      const mesDoLancamento = (vencimento || dataUsada).slice(0, 7);
       if (mesDoLancamento !== mes) {
         setCarregando(true);
         aoTrocarMes(mesDoLancamento);
@@ -332,7 +352,9 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
     ...transacoes.map(
       (t): ItemDaLista => ({
         chave: `t${t.id}`,
-        data: t.data,
+        // Ordena pela data que MANDA: a compra de outubro paga em novembro
+        // aparece junto das outras contas de novembro.
+        data: t.vencimento ?? t.data,
         especie: 'lancamento',
         transacao: t,
       })
@@ -381,6 +403,23 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                   obrigatorio
                 />
               </label>
+
+              {/*
+                Opcional: o caso comum é o dinheiro sair no mesmo dia, e aí o
+                campo fica vazio. Quando preenchido, é ELE que decide em que
+                mês o lançamento entra no Dashboard — e a trilha de meses pula
+                para lá assim que o lançamento é salvo, que é o que mostra para
+                onde a despesa foi sem precisar de texto explicando.
+              */}
+              <label className="campo">
+                <span>Vence em</span>
+                <SeletorDeData
+                  valor={vencimento}
+                  aoMudar={setVencimento}
+                  rotuloAcessivel="Vencimento do lançamento"
+                  minimo={data}
+                />
+              </label>
             </div>
           )}
 
@@ -404,7 +443,8 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                 <CampoComSugestoes
                   valor={categoria}
                   aoMudar={setCategoria}
-                  sugestoes={CATEGORIAS_SUGERIDAS}
+                  sugestoes={sugestoes.CATEGORIA}
+                  aoExcluir={excluirSugestao}
                   placeholder="Ex: Lazer"
                   rotuloAcessivel="Categoria do lançamento"
                   obrigatorio
@@ -470,7 +510,8 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                   <CampoComSugestoes
                     valor={formaDePagamento}
                     aoMudar={setFormaDePagamento}
-                    sugestoes={FORMAS_SUGERIDAS}
+                    sugestoes={sugestoes.FORMA_DE_PAGAMENTO}
+                    aoExcluir={excluirSugestao}
                     placeholder="Ex: Cartão Nubank"
                     rotuloAcessivel="Forma de pagamento"
                   />
@@ -665,7 +706,15 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
                   return (
                     <tr key={item.chave}>
-                      <td data-rotulo="Data">{formatarData(t.data)}</td>
+                      <td data-rotulo="Data">
+                        {formatarData(t.vencimento ?? t.data)}
+                        {/* A data da compra vira nota: quem manda na lista e
+                            no balanço é o vencimento, mas saber quando a
+                            compra foi feita continua importando. */}
+                        {t.vencimento && (
+                          <span className="marcador"> compra {formatarData(t.data)}</span>
+                        )}
+                      </td>
                       <td>
                         {t.descricao}
                         {parcela && <span className="marcador"> {parcela}</span>}

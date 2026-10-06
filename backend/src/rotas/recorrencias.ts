@@ -36,6 +36,8 @@ import {
 } from '../generated/prisma/enums.ts';
 import { dataPrevista } from '../projecao.ts';
 import { previsaoDoMes } from '../previsaoDoMes.ts';
+import { dentroDoMes } from '../mesDoLancamento.ts';
+import { CampoComSugestao, registrarSugestao } from '../sugestoes.ts';
 
 export const rotasDeRecorrencias = Router();
 
@@ -142,10 +144,12 @@ rotasDeRecorrencias.post('/', async (req, res) => {
   try {
     const corpo = req.body as Record<string, unknown>;
 
+    const usuarioId = idDoUsuarioLogado(req);
+
     const recorrencia = await prisma.recorrencia.create({
       data: {
         // O dono vem do token, nunca do corpo da requisição.
-        usuarioId: idDoUsuarioLogado(req),
+        usuarioId,
         descricao: validarDescricao(corpo['descricao']),
         valor: validarValor(corpo['valor']),
         categoria: validarCategoria(corpo['categoria']),
@@ -155,6 +159,15 @@ rotasDeRecorrencias.post('/', async (req, res) => {
         diaDoMes: validarDiaDoMes(corpo['diaDoMes']),
       },
     });
+
+    // A lista de opções é a mesma dos lançamentos: uma categoria criada aqui
+    // aparece lá, e vice-versa. São o mesmo campo, em telas diferentes.
+    await registrarSugestao(usuarioId, CampoComSugestao.CATEGORIA, recorrencia.categoria);
+    await registrarSugestao(
+      usuarioId,
+      CampoComSugestao.FORMA_DE_PAGAMENTO,
+      recorrencia.formaDePagamento
+    );
 
     res.status(201).json({ recorrencia: paraResposta(recorrencia) });
   } catch (erro) {
@@ -242,7 +255,7 @@ rotasDeRecorrencias.post('/:id/lancar', async (req, res) => {
     // Lançar duas vezes o mesmo mês criaria a cobrança em dobro que o vínculo
     // existe justamente para evitar.
     const jaExiste = await prisma.transacao.findFirst({
-      where: { usuarioId, recorrenciaId: id, data: intervaloDoMes(mes) },
+      where: { usuarioId, recorrenciaId: id, ...dentroDoMes(intervaloDoMes(mes)) },
       select: { id: true },
     });
 

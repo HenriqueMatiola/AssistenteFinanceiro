@@ -15,6 +15,7 @@ import {
   validarMes,
   validarParcelas,
   validarValor,
+  validarVencimento,
 } from './validacao.ts';
 
 describe('validarData', () => {
@@ -95,5 +96,35 @@ describe('validarParcelas', () => {
 
   it('recusa acima do limite', () => {
     assert.throws(() => validarParcelas(99), ErroDeValidacao);
+  });
+});
+
+describe('validarVencimento', () => {
+  const COMPRA = new Date('2026-10-05T00:00:00.000Z');
+
+  it('ausente significa "no mesmo dia"', () => {
+    // Os três jeitos de o campo chegar vazio da tela.
+    assert.equal(validarVencimento(undefined, COMPRA), null);
+    assert.equal(validarVencimento(null, COMPRA), null);
+    assert.equal(validarVencimento('', COMPRA), null);
+  });
+
+  it('aceita vencimento depois da compra', () => {
+    const vencimento = validarVencimento('2026-11-10', COMPRA);
+    assert.equal(vencimento?.toISOString().slice(0, 10), '2026-11-10');
+  });
+
+  it('aceita o mesmo dia — é um jeito explícito de dizer "à vista"', () => {
+    assert.equal(validarVencimento('2026-10-05', COMPRA)?.toISOString(), COMPRA.toISOString());
+  });
+
+  it('recusa vencimento anterior à compra', () => {
+    // Não é caso de uso, é dedo no campo errado — e o estrago seria calado,
+    // jogando a despesa para um mês já fechado.
+    assert.throws(() => validarVencimento('2026-09-30', COMPRA), ErroDeValidacao);
+  });
+
+  it('recusa data inexistente, como qualquer outro campo de data', () => {
+    assert.throws(() => validarVencimento('2026-02-31', COMPRA), ErroDeValidacao);
   });
 });

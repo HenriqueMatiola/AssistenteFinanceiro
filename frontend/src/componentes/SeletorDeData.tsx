@@ -12,6 +12,8 @@ interface Props {
   obrigatorio?: boolean;
   rotuloAcessivel: string;
   maximo?: string;
+  /** Dias anteriores a este ficam desligados no calendário. */
+  minimo?: string;
 }
 
 function dataLocal(valor: string) {
@@ -20,10 +22,11 @@ function dataLocal(valor: string) {
   return new Date(ano, mes - 1, dia);
 }
 
-function SeletorDeData({ valor, aoMudar, obrigatorio, rotuloAcessivel, maximo }: Props) {
+function SeletorDeData({ valor, aoMudar, obrigatorio, rotuloAcessivel, maximo, minimo }: Props) {
   const [aberto, setAberto] = useState(false);
   const selecionada = dataLocal(valor);
   const limite = dataLocal(maximo ?? '');
+  const piso = dataLocal(minimo ?? '');
 
   return (
     <Popover.Root open={aberto} onOpenChange={setAberto}>
@@ -51,7 +54,12 @@ function SeletorDeData({ valor, aoMudar, obrigatorio, rotuloAcessivel, maximo }:
             locale={ptBR}
             selected={selecionada}
             defaultMonth={selecionada}
-            disabled={limite ? { after: limite } : undefined}
+            /* O calendário já recusa o que o backend recusaria: data fora do
+               teto, ou — no vencimento — anterior à data do lançamento. */
+            disabled={[
+              ...(limite ? [{ after: limite }] : []),
+              ...(piso ? [{ before: piso }] : []),
+            ]}
             showOutsideDays
             fixedWeeks
             onSelect={(novaData) => {

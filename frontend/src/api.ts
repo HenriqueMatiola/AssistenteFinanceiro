@@ -274,6 +274,11 @@ export interface Transacao {
   id: number;
   /** Sempre no formato "AAAA-MM-DD", sem hora e sem fuso. */
   data: string;
+  /**
+   * Quando o dinheiro se move, quando não é no dia do lançamento. Nulo quer
+   * dizer "no mesmo dia". É ELE que define em que mês o lançamento aparece.
+   */
+  vencimento: string | null;
   /** O que foi: "Netflix", "Cabelo". A categoria diz de que grupo é. */
   descricao: string;
   valor: number;
@@ -293,6 +298,8 @@ export interface Transacao {
 
 export interface NovaTransacao {
   data: string;
+  /** Quando o dinheiro vai se mover, se não for no dia do lançamento. */
+  vencimento?: string;
   descricao: string;
   /** Com parcelamento, é o valor de CADA parcela — não o total da compra. */
   valor: number;
@@ -810,4 +817,43 @@ export async function excluirBaixa(acertoId: number, baixaId: number): Promise<A
     { method: 'DELETE' }
   );
   return resposta.acerto;
+}
+
+// --- Sugestões dos campos de texto livre ------------------------------------
+
+/** Em qual campo a sugestão aparece. As listas não se misturam. */
+export type CampoComSugestao = 'CATEGORIA' | 'FORMA_DE_PAGAMENTO' | 'PESSOA';
+
+/** Uma opção já usada. O `id` existe para poder apagá-la. */
+export interface Sugestao {
+  id: number;
+  valor: string;
+}
+
+export type SugestoesPorCampo = Record<CampoComSugestao, Sugestao[]>;
+
+/** Começa vazio: o app não traz lista pronta, ela cresce com o uso. */
+export const SUGESTOES_VAZIAS: SugestoesPorCampo = {
+  CATEGORIA: [],
+  FORMA_DE_PAGAMENTO: [],
+  PESSOA: [],
+};
+
+/**
+ * As três listas de uma vez — a tela de Lançamentos usa duas ao mesmo tempo, e
+ * são poucas dezenas de linhas no total.
+ */
+export async function listarSugestoes(): Promise<SugestoesPorCampo> {
+  const resposta = await chamar<{ sugestoes: SugestoesPorCampo }>('/api/sugestoes');
+  return resposta.sugestoes;
+}
+
+/**
+ * Tira a opção do campo de digitar.
+ *
+ * Não mexe nos lançamentos que a usaram: o que foi gasto em "Mercado" continua
+ * em "Mercado". Some só a oferta.
+ */
+export async function excluirSugestao(id: number): Promise<void> {
+  await chamar(`/api/sugestoes/${id}`, { method: 'DELETE' });
 }

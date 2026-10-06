@@ -20,6 +20,7 @@ import {
   type LancamentosDoMes,
 } from '../projecao.ts';
 import { TipoTransacao } from '../generated/prisma/enums.ts';
+import { dataEfetiva, dentroDoMes } from '../mesDoLancamento.ts';
 
 export const rotasDeProjecao = Router();
 
@@ -104,12 +105,14 @@ rotasDeProjecao.get('/', async (req, res) => {
       prisma.transacao.findMany({
         where: {
           usuarioId,
-          data: {
+          // A janela é de vários meses, mas a regra é a mesma do Dashboard:
+          // quem diz em que mês o lançamento cai é o vencimento, quando existe.
+          ...dentroDoMes({
             gte: intervaloDoMes(inicio).gte,
             lt: intervaloDoMes(ultimoMes).lt,
-          },
+          }),
         },
-        select: { data: true, valor: true, tipo: true },
+        select: { data: true, vencimento: true, valor: true, tipo: true },
       }),
     ]);
 
@@ -117,7 +120,9 @@ rotasDeProjecao.get('/', async (req, res) => {
     const lancamentosPorMes = new Map<string, LancamentosDoMes>();
 
     for (const transacao of lancamentosFuturos) {
-      const mes = transacao.data.toISOString().slice(0, 7);
+      // Pelo vencimento quando existe: a parcela comprada em outubro e paga
+      // em janeiro pertence à projeção de janeiro.
+      const mes = dataEfetiva(transacao).toISOString().slice(0, 7);
       const totais = lancamentosPorMes.get(mes) ?? { entradas: 0, saidas: 0 };
       const valor = transacao.valor.toNumber();
 

@@ -27,6 +27,7 @@ import {
   validarValor,
 } from '../validacao.ts';
 import { cabeNoSaldo, consolidarAcerto, totaisEmAberto } from '../acertos.ts';
+import { CampoComSugestao, registrarSugestao } from '../sugestoes.ts';
 import type { TipoDeAcerto } from '../generated/prisma/enums.ts';
 
 export const rotasDeAcertos = Router();
@@ -163,9 +164,11 @@ rotasDeAcertos.post('/', async (req, res) => {
       descricao?: unknown;
     };
 
+    const usuarioId = idDoUsuarioLogado(req);
+
     const acerto = await prisma.acerto.create({
       data: {
-        usuarioId: idDoUsuarioLogado(req),
+        usuarioId,
         tipo: validarTipoDeAcerto(corpo.tipo),
         pessoa: validarPessoa(corpo.pessoa),
         valor: validarValor(corpo.valor),
@@ -173,6 +176,11 @@ rotasDeAcertos.post('/', async (req, res) => {
       },
       include: { baixas: BAIXAS_EM_ORDEM },
     });
+
+    // O nome passa a ser oferecido no campo "Quem" da próxima vez. Antes a
+    // lista saía dos acertos existentes, o que impedia esquecer alguém: agora
+    // dá para apagar o nome sem apagar o acerto.
+    await registrarSugestao(usuarioId, CampoComSugestao.PESSOA, acerto.pessoa);
 
     res.status(201).json({ acerto: paraResposta(acerto) });
   } catch (erro) {

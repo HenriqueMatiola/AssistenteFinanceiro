@@ -15,27 +15,17 @@ import {
   numeroDaEntradaMonetaria,
 } from '../formato.ts';
 import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
+import { useSugestoes } from '../useSugestoes.ts';
 import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 
-// As mesmas sugestões da tela de Lançamentos: a categoria de uma recorrência é
-// a mesma coisa que a de um lançamento, e o gráfico do Dashboard agrupa por ela.
-const CATEGORIAS_SUGERIDAS = [
-  'Alimentação',
-  'Moradia',
-  'Transporte',
-  'Saúde',
-  'Educação',
-  'Lazer',
-  'Salário',
-  'Investimentos',
-  'Outros',
-];
-
-// Mesmas sugestões da tela de Lançamentos, pelo mesmo motivo: campo livre,
-// porque os cartões de cada pessoa são outros.
-const FORMAS_SUGERIDAS = ['Pix', 'Dinheiro', 'Débito', 'Cartão de crédito', 'Boleto'];
-
 function Recorrencias() {
+  /*
+   * As mesmas listas da tela de Lançamentos: a categoria de uma recorrência é
+   * a mesma coisa que a de um lançamento, e o gráfico do Dashboard agrupa as
+   * duas juntas. Criar uma aqui faz ela aparecer lá.
+   */
+  const { sugestoes, excluir: excluirSugestao, recarregar: recarregarSugestoes } = useSugestoes();
+
   const [recorrencias, setRecorrencias] = useState<Recorrencia[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erroDaLista, setErroDaLista] = useState<string | null>(null);
@@ -123,6 +113,8 @@ function Recorrencias() {
       setDescricao('');
       setValor('');
       setCategoria('');
+      // Traz para a lista a categoria que o backend acabou de memorizar.
+      recarregarSugestoes();
       recarregar();
     } catch (e) {
       setErroDoFormulario(e instanceof Error ? e.message : 'Não consegui salvar.');
@@ -204,7 +196,8 @@ function Recorrencias() {
               <CampoComSugestoes
                 valor={categoria}
                 aoMudar={setCategoria}
-                sugestoes={CATEGORIAS_SUGERIDAS}
+                sugestoes={sugestoes.CATEGORIA}
+                aoExcluir={excluirSugestao}
                 placeholder="Ex: Moradia"
                 rotuloAcessivel="Categoria da recorrência"
                 obrigatorio
@@ -265,7 +258,8 @@ function Recorrencias() {
               <CampoComSugestoes
                 valor={formaDePagamento}
                 aoMudar={setFormaDePagamento}
-                sugestoes={FORMAS_SUGERIDAS}
+                sugestoes={sugestoes.FORMA_DE_PAGAMENTO}
+                aoExcluir={excluirSugestao}
                 placeholder="Ex: Cartão Nubank"
                 rotuloAcessivel="Forma de pagamento da recorrência"
               />
