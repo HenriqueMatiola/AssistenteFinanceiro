@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, Trash, X } from '@phosphor-icons/react';
+import { PencilSimple, Plus, Trash, X } from '@phosphor-icons/react';
 import {
+  atualizarAcerto,
   criarAcerto,
+  editarBaixa,
   excluirAcerto,
   excluirBaixa,
   listarAcertos,
@@ -21,8 +23,16 @@ import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
 import { useSugestoes } from '../useSugestoes.ts';
 import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 import SeletorDeData from '../componentes/SeletorDeData.tsx';
+import AvisoTemporario, { useAvisoTemporario } from '../componentes/AvisoTemporario.tsx';
 
 const TOTAIS_ZERADOS: TotaisDeAcertos = { aReceber: 0, aPagar: 0, liquido: 0 };
+
+/**
+ * Quantos pagamentos cada acerto mostra antes do "Ver mais". Os mais recentes
+ * são os que se consultam ("já me pagou este mês?"); os antigos ficam a um
+ * clique, sem esticar o cartão de quem paga de pouco em pouco.
+ */
+const PAGAMENTOS_VISIVEIS = 3;
 
 /**
  * A aba "A receber e a pagar".
@@ -61,6 +71,26 @@ function Acertos() {
   const [erroDaBaixa, setErroDaBaixa] = useState<string | null>(null);
   const [registrando, setRegistrando] = useState(false);
 
+  // O acerto aberto no formulário lá de cima. Nulo = criando um novo.
+  const [emEdicao, setEmEdicao] = useState<Acerto | null>(null);
+  const [aviso, setAviso] = useAvisoTemporario();
+
+  /*
+   * O pagamento sendo corrigido, editado na própria linha do histórico — são
+   * só dois campos, e levar isso para o formulário de cima tiraria a pessoa
+   * do lugar onde ela está olhando.
+   */
+  const [baixaEmEdicao, setBaixaEmEdicao] = useState<{ acertoId: number; baixaId: number } | null>(
+    null
+  );
+  const [dataEditada, setDataEditada] = useState('');
+  const [valorEditado, setValorEditado] = useState('');
+  const [erroDaEdicaoDeBaixa, setErroDaEdicaoDeBaixa] = useState<string | null>(null);
+  const [corrigindo, setCorrigindo] = useState(false);
+
+  // Acertos com o histórico inteiro aberto (o resto mostra só os recentes).
+  const [historicosAbertos, setHistoricosAbertos] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     // Se a lista recarregar antes da resposta chegar, esta flag descarta o
     // resultado atrasado — senão uma busca antiga sobrescreveria a nova.
@@ -72,6 +102,12 @@ function Acertos() {
         setAcertos(resposta.acertos);
         setTotais(resposta.totais);
         setErroDaLista(null);
+
+        // O acerto aberto no formulário pega a versão nova — senão o "já foram
+        // pagos R$ X" de lá ficaria velho depois de corrigir um pagamento.
+        setEmEdicao((atual) =>
+          atual ? (resposta.acertos.find((a) => a.id === atual.id) ?? atual) : null
+        );
       })
       .catch((e: unknown) => {
         if (cancelado) return;
@@ -107,7 +143,84 @@ function Acertos() {
   const emAberto = acertos.filter((a) => !a.quitado);
   const quitados = acertos.filter((a) => a.quitado);
 
+  /** Volta o formulário de cima a um acerto novo. */
+  function limparFormulario() {
+    setEmEdicao(null);
+    setTipo('RECEBER');
+    setPessoa('');
+    setValor('');
+    setDescricao('');
+    setErroDoFormulario(null);
+  }
+
+  /** Carrega o acerto no formulário de cima e sobe a página até ele. */
+  function comecarEdicao(acerto: Acerto) {
+    setEmEdicao(acerto);
+    setTipo(acerto.tipo);
+    setPessoa(acerto.pessoa);
+    // "200.00" → "R$ 200,00": a mesma máscara que a digitação usa.
+    setValor(formatarEntradaMonetaria(acerto.valor.toFixed(2)));
+    setDescricao(acerto.descricao ?? '');
+    setErroDoFormulario(null);
+    setAviso(null);
+
+    // Para o TOPO, e não até o formulário: os totais grudam embaixo da barra
+    // superior e cobririam o começo dele. No topo, os dois aparecem inteiros.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function alternarHistorico(acertoId: number) {
+    setHistoricosAbertos((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(acertoId)) novo.delete(acertoId);
+      else novo.add(acertoId);
+      return novo;
+    });
+  }
+
+  function comecarEdicaoDeBaixa(acertoId: number, baixa: { id: number; data: string; valor: number }) {
+    // Uma correção por vez: abrir esta fecha o "registrar pagamento".
+    setAcertoAberto(null);
+    setBaixaEmEdicao({ acertoId, baixaId: baixa.id });
+    setDataEditada(baixa.data);
+    setValorEditado(formatarEntradaMonetaria(baixa.valor.toFixed(2)));
+    setErroDaEdicaoDeBaixa(null);
+  }
+
+  function fecharEdicaoDeBaixa() {
+    setBaixaEmEdicao(null);
+    setErroDaEdicaoDeBaixa(null);
+  }
+
+  async function aoCorrigirBaixa(evento: FormEvent) {
+    evento.preventDefault();
+    if (!baixaEmEdicao) return;
+    setErroDaEdicaoDeBaixa(null);
+    setCorrigindo(true);
+
+    try {
+      const valorNumerico = numeroDaEntradaMonetaria(valorEditado);
+
+      if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
+        throw new Error('Informe um valor maior que zero.');
+      }
+
+      await editarBaixa(baixaEmEdicao.acertoId, baixaEmEdicao.baixaId, {
+        data: dataEditada,
+        valor: valorNumerico,
+      });
+
+      fecharEdicaoDeBaixa();
+      recarregar();
+    } catch (e) {
+      setErroDaEdicaoDeBaixa(e instanceof Error ? e.message : 'Não consegui corrigir.');
+    } finally {
+      setCorrigindo(false);
+    }
+  }
+
   function abrirBaixa(acerto: Acerto) {
+    fecharEdicaoDeBaixa();
     setAcertoAberto(acerto.id);
     setDataDaBaixa(hojeISO());
     setValorDaBaixa('');
@@ -131,18 +244,31 @@ function Acertos() {
         throw new Error('Informe um valor maior que zero.');
       }
 
-      await criarAcerto({
-        tipo,
-        pessoa,
-        valor: valorNumerico,
-        descricao: descricao || undefined,
-      });
+      if (emEdicao) {
+        // `null`, e não `undefined`, para a descrição apagada sumir de fato:
+        // ausente no corpo, o backend entenderia "não mexa nela".
+        await atualizarAcerto(emEdicao.id, {
+          tipo,
+          pessoa,
+          valor: valorNumerico,
+          descricao: descricao || null,
+        });
+        setAviso(`Acerto com ${pessoa} atualizado.`);
+        limparFormulario();
+      } else {
+        await criarAcerto({
+          tipo,
+          pessoa,
+          valor: valorNumerico,
+          descricao: descricao || undefined,
+        });
 
-      // O tipo fica como estava: quem está registrando várias dívidas de uma
-      // vez costuma estar do mesmo lado do balcão.
-      setPessoa('');
-      setValor('');
-      setDescricao('');
+        // O tipo fica como estava: quem está registrando várias dívidas de uma
+        // vez costuma estar do mesmo lado do balcão.
+        setPessoa('');
+        setValor('');
+        setDescricao('');
+      }
       // O nome recém-digitado acabou de virar opção no backend.
       recarregarSugestoes();
       recarregar();
@@ -187,6 +313,8 @@ function Acertos() {
     setErroDaLista(null);
     try {
       await excluirAcerto(acerto.id);
+      // Editar algo que não existe mais terminaria num 404 ao salvar.
+      if (emEdicao?.id === acerto.id) limparFormulario();
       recarregar();
     } catch (e) {
       setErroDaLista(e instanceof Error ? e.message : 'Não consegui excluir.');
@@ -197,6 +325,7 @@ function Acertos() {
     setErroDaLista(null);
     try {
       await excluirBaixa(acerto.id, baixaId);
+      if (baixaEmEdicao?.baixaId === baixaId) fecharEdicaoDeBaixa();
       recarregar();
     } catch (e) {
       setErroDaLista(e instanceof Error ? e.message : 'Não consegui apagar o pagamento.');
@@ -208,9 +337,23 @@ function Acertos() {
     const ehReceber = a.tipo === 'RECEBER';
     const cor = ehReceber ? 'ganho' : 'gasto';
 
+    const historicoAberto = historicosAbertos.has(a.id);
+    const baixasVisiveis = historicoAberto ? a.baixas : a.baixas.slice(0, PAGAMENTOS_VISIVEIS);
+    const baixasEscondidas = a.baixas.length - PAGAMENTOS_VISIVEIS;
+
+    const classes = [
+      'acerto',
+      a.quitado && 'acerto--quitado',
+      emEdicao?.id === a.id && 'acerto--em-edicao',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
     return (
-      <li key={a.id} className={a.quitado ? 'acerto acerto--quitado' : 'acerto'}>
-        <div className="acerto__topo">
+      <li key={a.id} className={classes}>
+        {/* Clicar no topo do cartão abre a edição, como nas linhas das outras
+            abas. O botão "Editar" lá embaixo faz o mesmo pelo teclado. */}
+        <div className="acerto__topo acerto__topo--editavel" onClick={() => comecarEdicao(a)}>
           <div>
             <span className="acerto__pessoa">{a.pessoa}</span>
             <span className={`etiqueta etiqueta--${cor}`}>
@@ -233,22 +376,90 @@ function Acertos() {
 
         {a.baixas.length > 0 && (
           <ul className="acerto__historico">
-            {a.baixas.map((b) => (
-              <li key={b.id} className="acerto__baixa">
-                <span className="acerto__baixa-data">{formatarData(b.data)}</span>
-                <span className="acerto__baixa-valor">
-                  {ehReceber ? 'Recebi' : 'Paguei'} {formatarDinheiro(b.valor)}
-                </span>
+            {baixasVisiveis.map((b) =>
+              baixaEmEdicao?.baixaId === b.id ? (
+                // --- Corrigindo este pagamento: a linha vira formulário ---
+                <li key={b.id}>
+                  <form className="acerto__form acerto__form--correcao" onSubmit={(e) => void aoCorrigirBaixa(e)}>
+                    <label className="campo">
+                      <span>Quando</span>
+                      <SeletorDeData
+                        valor={dataEditada}
+                        aoMudar={setDataEditada}
+                        rotuloAcessivel={`Nova data do pagamento com ${a.pessoa}`}
+                        obrigatorio
+                      />
+                    </label>
+
+                    <label className="campo">
+                      <span>Quanto</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={valorEditado}
+                        onChange={(e) => setValorEditado(formatarEntradaMonetaria(e.target.value))}
+                        className="campo__dinheiro"
+                        required
+                        autoFocus
+                      />
+                    </label>
+
+                    <button type="submit" disabled={corrigindo}>
+                      {corrigindo ? 'Salvando…' : 'Salvar'}
+                    </button>
+                    <button type="button" className="botao--discreto" onClick={fecharEdicaoDeBaixa}>
+                      Cancelar
+                    </button>
+
+                    {erroDaEdicaoDeBaixa && (
+                      <p className="mensagem-erro acerto__erro">{erroDaEdicaoDeBaixa}</p>
+                    )}
+                  </form>
+                </li>
+              ) : (
+                <li key={b.id} className="acerto__baixa">
+                  <span className="acerto__baixa-data">{formatarData(b.data)}</span>
+                  <span className="acerto__baixa-valor">
+                    {ehReceber ? 'Recebi' : 'Paguei'} {formatarDinheiro(b.valor)}
+                  </span>
+                  <span className="acerto__baixa-acoes">
+                    <button
+                      type="button"
+                      className="botao--discreto acerto__desfazer"
+                      onClick={() => comecarEdicaoDeBaixa(a.id, b)}
+                      aria-label={`Corrigir o pagamento de ${formatarDinheiro(b.valor)} em ${formatarData(b.data)}`}
+                    >
+                      <PencilSimple weight="bold" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="botao--discreto botao--perigo acerto__desfazer"
+                      onClick={() => void aoExcluirBaixa(a, b.id)}
+                      aria-label={`Apagar o pagamento de ${formatarDinheiro(b.valor)} em ${formatarData(b.data)}`}
+                    >
+                      <X weight="bold" aria-hidden="true" />
+                    </button>
+                  </span>
+                </li>
+              )
+            )}
+
+            {baixasEscondidas > 0 && (
+              <li>
                 <button
                   type="button"
-                  className="botao--discreto botao--perigo acerto__desfazer"
-                  onClick={() => void aoExcluirBaixa(a, b.id)}
-                  aria-label={`Apagar o pagamento de ${formatarDinheiro(b.valor)} em ${formatarData(b.data)}`}
+                  className="botao--discreto acerto__ver-mais"
+                  onClick={() => alternarHistorico(a.id)}
+                  aria-expanded={historicoAberto}
                 >
-                  <X weight="bold" aria-hidden="true" />
+                  {historicoAberto
+                    ? 'Mostrar só os mais recentes'
+                    : `Ver mais ${baixasEscondidas} ${
+                        baixasEscondidas === 1 ? 'pagamento' : 'pagamentos'
+                      }`}
                 </button>
               </li>
-            ))}
+            )}
           </ul>
         )}
 
@@ -313,6 +524,15 @@ function Acertos() {
 
             <button
               type="button"
+              className="botao--discreto botao--acao botao--acao-reabrir"
+              onClick={() => comecarEdicao(a)}
+            >
+              <PencilSimple weight="bold" aria-hidden="true" />
+              Editar
+            </button>
+
+            <button
+              type="button"
               className="botao--discreto botao--perigo botao--acao botao--acao-excluir"
               onClick={() => void aoExcluirAcerto(a)}
             >
@@ -355,15 +575,29 @@ function Acertos() {
         </div>
       </section>
 
-      <section className="cartao">
-        <h2>Novo acerto</h2>
-        <p className="explicacao">
-          Dinheiro emprestado, adiantado ou rateado com alguém, <strong>sem data
-          para acontecer</strong>. Se a conta tem dia certo, ela é um lançamento
-          — cadastre em Lançamentos, para entrar no balanço do mês. Nada desta
-          aba aparece no Dashboard: emprestar não é gastar, é dinheiro que muda
-          de lugar e volta.
-        </p>
+      <section className={emEdicao ? 'cartao cartao--em-edicao' : 'cartao'}>
+        <h2>{emEdicao ? 'Editar acerto' : 'Novo acerto'}</h2>
+        {emEdicao ? (
+          <p className="explicacao">
+            {/* O backend recusa reduzir abaixo do que já entrou; dizer o número
+                aqui evita a pessoa descobrir isso pela mensagem de erro. */}
+            {emEdicao.pago > 0 ? (
+              <>
+                Já foram pagos <strong>{formatarDinheiro(emEdicao.pago)}</strong> deste
+                acerto, então o valor total não pode ficar abaixo disso.{' '}
+              </>
+            ) : null}
+            Para corrigir um pagamento, use o lápis ao lado dele no histórico.
+          </p>
+        ) : (
+          <p className="explicacao">
+            Dinheiro emprestado, adiantado ou rateado com alguém, <strong>sem data
+            para acontecer</strong>. Se a conta tem dia certo, ela é um lançamento
+            — cadastre em Lançamentos, para entrar no balanço do mês. Nada desta
+            aba aparece no Dashboard: emprestar não é gastar, é dinheiro que muda
+            de lugar e volta.
+          </p>
+        )}
 
         <form onSubmit={(e) => void aoCriar(e)}>
           <div className="linha-de-campos">
@@ -419,10 +653,24 @@ function Acertos() {
 
           {erroDoFormulario && <p className="mensagem-erro">{erroDoFormulario}</p>}
 
-          <button type="submit" disabled={salvando}>
-            {salvando ? 'Salvando…' : 'Adicionar acerto'}
-          </button>
+          <div className="botoes-do-formulario">
+            <button type="submit" disabled={salvando}>
+              {salvando ? 'Salvando…' : emEdicao ? 'Salvar alterações' : 'Adicionar acerto'}
+            </button>
+            {emEdicao && (
+              <button
+                type="button"
+                className="botao--discreto"
+                onClick={limparFormulario}
+                disabled={salvando}
+              >
+                Cancelar edição
+              </button>
+            )}
+          </div>
         </form>
+
+        <AvisoTemporario texto={aviso} />
       </section>
 
       <section className="cartao">

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowCounterClockwise,
   Check,
@@ -9,9 +9,12 @@ import {
   Trash,
 } from '@phosphor-icons/react';
 import {
+  alterarStatusDeVarias,
   alterarStatusTransacao,
   criarTransacao,
+  editarTransacao,
   excluirTransacao,
+  excluirVarias,
   lancarRecorrencia,
   listarPrevistas,
   listarTransacoes,
@@ -36,6 +39,12 @@ import SelectPersonalizado from '../componentes/SelectPersonalizado.tsx';
 import CampoComSugestoes from '../componentes/CampoComSugestoes.tsx';
 import SeletorDeData from '../componentes/SeletorDeData.tsx';
 import { useSugestoes } from '../useSugestoes.ts';
+import TituloOrdenavel, {
+  ordenarPor,
+  proximaOrdenacao,
+  type Ordenacao,
+} from '../componentes/TituloOrdenavel.tsx';
+import AvisoTemporario, { useAvisoTemporario } from '../componentes/AvisoTemporario.tsx';
 
 // Ganhos entram apenas por estes três caminhos, e por isso continuam numa
 // lista FECHADA (um select, não um campo de digitar): sem ela, os relatórios
@@ -65,6 +74,65 @@ type TipoDoFormulario = TipoTransacao | 'SOBRA';
 const DESCRICAO_DA_SOBRA = 'Sobra do mês anterior';
 const CATEGORIA_DA_SOBRA = 'Sobra';
 
+/** As colunas que se ordenam clicando no título. Ações fica de fora. */
+type ColunaOrdenavel =
+  | 'compra'
+  | 'vencimento'
+  | 'descricao'
+  | 'categoria'
+  | 'pagamento'
+  | 'valor'
+  | 'situacao';
+
+/**
+ * O que cada linha tem naquela coluna, já pronto para comparar.
+ *
+ * - Previsão não tem data de compra: ela ainda não aconteceu. Usa a data em
+ *   que cai, que é a mesma que ela recebe ao ser lançada.
+ * - Valor é comparado SEM o sinal: "do menor para o maior" é do lançamento
+ *   pequeno ao grande, seja gasto ou ganho. Com sinal, o maior gasto (o mais
+ *   negativo) viria primeiro na ordem crescente, que não é o que se espera.
+ * - Situação vira número para o pendente vir antes do pago na crescente.
+ */
+function valorDaColuna(item: ItemDaLista, coluna: ColunaOrdenavel): string | number | null {
+  if (item.especie === 'previsao') {
+    const p = item.previsao;
+    switch (coluna) {
+      case 'compra':
+      case 'vencimento':
+        return p.data;
+      case 'descricao':
+        return p.descricao;
+      case 'categoria':
+        return p.categoria;
+      case 'pagamento':
+        return p.formaDePagamento;
+      case 'valor':
+        return p.valor;
+      case 'situacao':
+        return 0;
+    }
+  }
+
+  const t = item.transacao;
+  switch (coluna) {
+    case 'compra':
+      return t.data;
+    case 'vencimento':
+      return t.vencimento ?? t.data;
+    case 'descricao':
+      return t.descricao;
+    case 'categoria':
+      return t.categoria;
+    case 'pagamento':
+      return t.formaDePagamento;
+    case 'valor':
+      return t.valor;
+    case 'situacao':
+      return t.status === 'PENDENTE' ? 0 : 1;
+  }
+}
+
 interface Props {
   /** Mês em foco, escolhido na trilha do topo. Formato "AAAA-MM". */
   mes: string;
@@ -81,6 +149,28 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   // Filtros
   const [tipoFiltrado, setTipoFiltrado] = useState<TipoTransacao | ''>('');
   const [statusFiltrado, setStatusFiltrado] = useState<StatusTransacao | ''>('');
+
+  // Ordenação pelos títulos da tabela. Fica no navegador: reordenar o que já
+  // chegou não precisa de outra viagem ao backend.
+  // `null` é a ordem de extrato: do vencimento mais recente ao mais antigo.
+  const [ordenacao, setOrdenacao] = useState<Ordenacao<ColunaOrdenavel>>(null);
+
+  /*
+   * Linhas marcadas para as ações em lote, pela `chave` de cada item ("t12"
+   * para lançamento, "p3" para previsão). Chave, e não id, porque um
+   * lançamento e uma previsão podem ter o mesmo número.
+   */
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [processandoLote, setProcessandoLote] = useState(false);
+  const caixaDeTodos = useRef<HTMLInputElement>(null);
+
+  /*
+   * O lançamento que o formulário lá de cima está editando. Nulo = o
+   * formulário está criando um novo, como sempre foi.
+   */
+  const [emEdicao, setEmEdicao] = useState<Transacao | null>(null);
+  const cartaoDoFormulario = useRef<HTMLElement>(null);
+  const campoDeDescricao = useRef<HTMLInputElement>(null);
 
   // Formulário
   const [descricao, setDescricao] = useState('');
@@ -109,7 +199,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   const [parcelas, setParcelas] = useState('1');
   const [salvando, setSalvando] = useState(false);
   const [erroDoFormulario, setErroDoFormulario] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [aviso, setAviso] = useAvisoTemporario();
 
   // Id da recorrência sendo lançada, para desabilitar só o botão dela.
   const [lancando, setLancando] = useState<number | null>(null);
@@ -123,7 +213,9 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   // Uma sobra do mês passado é um valor único e já realizado: parcelar,
   // classificar como fixo/variável ou dizer a forma de pagamento não se
   // aplicam a ela.
-  const quantidadeDeParcelas = ehSobra ? 1 : Number(parcelas) || 1;
+  // Na edição também: o parcelamento se decide ao criar a compra, e mudar o
+  // número de parcelas depois exigiria criar ou apagar as irmãs.
+  const quantidadeDeParcelas = ehSobra || emEdicao ? 1 : Number(parcelas) || 1;
   const ehParcelado = quantidadeDeParcelas > 1;
 
   // Uma conta prevista é, por definição, uma conta que ainda não aconteceu.
@@ -144,6 +236,15 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
         setTransacoes(lista);
         setPrevistas(contasPrevistas);
         setErroDaLista(null);
+
+        // A seleção guarda só o que continua na tela. Sem isto, trocar de mês
+        // e voltar traria linhas marcadas que a pessoa já nem lembrava — e uma
+        // exclusão em lote apagaria o que ela não está vendo.
+        const chavesNaTela = new Set([
+          ...lista.map((t) => `t${t.id}`),
+          ...contasPrevistas.map((p) => `p${p.id}`),
+        ]);
+        setSelecionados((atual) => new Set([...atual].filter((c) => chavesNaTela.has(c))));
       })
       .catch((e: unknown) => {
         if (cancelado) return;
@@ -166,6 +267,10 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   function trocarStatusFiltrado(novoStatus: StatusTransacao | '') {
     setCarregando(true);
     setStatusFiltrado(novoStatus);
+  }
+
+  function alternarOrdenacao(coluna: ColunaOrdenavel) {
+    setOrdenacao((atual) => proximaOrdenacao(atual, coluna));
   }
 
   function mudarTipo(novoTipo: TipoDoFormulario) {
@@ -200,6 +305,59 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
     setVersaoDaLista((n) => n + 1);
   }
 
+  /** Volta o formulário a um lançamento novo, do zero. */
+  function limparFormulario() {
+    setEmEdicao(null);
+    setDescricao('');
+    setData(hojeISO());
+    setVencimento('');
+    setValor('');
+    setCategoria('');
+    setTipo('GASTO');
+    setStatus('PENDENTE');
+    setFormaDePagamento('');
+    setClassificacao('');
+    setParcelas('1');
+    setErroDoFormulario(null);
+  }
+
+  /**
+   * Carrega o lançamento clicado no formulário lá de cima e rola até ele.
+   * O que estava digitado ali é substituído — é o preço de reaproveitar o
+   * mesmo formulário em vez de abrir um segundo só para editar.
+   */
+  function comecarEdicao(transacao: Transacao) {
+    setEmEdicao(transacao);
+    setDescricao(transacao.descricao);
+    setData(transacao.data);
+    setVencimento(transacao.vencimento ?? '');
+    // "450.00" → "R$ 450,00": a mesma máscara que a digitação usa.
+    setValor(formatarEntradaMonetaria(transacao.valor.toFixed(2)));
+    setCategoria(transacao.categoria);
+    setTipo(transacao.ehSobraDoMesAnterior ? 'SOBRA' : transacao.tipo);
+    setStatus(transacao.status);
+    setFormaDePagamento(transacao.formaDePagamento ?? '');
+    setClassificacao(transacao.classificacao ?? '');
+    setParcelas('1');
+    setErroDoFormulario(null);
+    setAviso(null);
+
+    cartaoDoFormulario.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // `preventScroll`: o foco não briga com a rolagem suave que já começou.
+    campoDeDescricao.current?.focus({ preventScroll: true });
+  }
+
+  // --- Seleção e ações em lote ------------------------------------------
+
+  function alternarSelecao(chave: string) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(chave)) novo.delete(chave);
+      else novo.add(chave);
+      return novo;
+    });
+  }
+
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     setErroDoFormulario(null);
@@ -221,24 +379,34 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
        *   sobra pertence;
        * - ela nasce concluída, porque é dinheiro que já está na conta.
        */
-      const dataUsada = ehSobra ? `${mes}-01` : data;
+      //
+      // Na edição, o "mês da sobra" é o do próprio lançamento, e não o da
+      // trilha — editar o valor não pode empurrá-lo para outro mês.
+      const dataUsada = ehSobra ? `${(emEdicao ? data : mes).slice(0, 7)}-01` : data;
+      // Sobra não tem vencimento: ela é dinheiro que JÁ está na conta.
+      const vencimentoUsado = ehSobra ? '' : vencimento;
 
-      const criadas = await criarTransacao({
+      const dados = {
         data: dataUsada,
-        // Sobra não tem vencimento: ela é dinheiro que JÁ está na conta.
-        vencimento: ehSobra ? undefined : vencimento || undefined,
+        vencimento: vencimentoUsado || undefined,
         descricao: ehSobra ? DESCRICAO_DA_SOBRA : descricao,
         valor: valorNumerico,
         categoria: ehSobra ? CATEGORIA_DA_SOBRA : categoria,
-        tipo: ehSobra ? 'GANHO' : tipo,
-        status: ehSobra ? 'CONCLUIDA' : status,
+        tipo: ehSobra ? ('GANHO' as const) : tipo,
+        status: ehSobra ? ('CONCLUIDA' as const) : status,
         formaDePagamento: ehSobra ? undefined : formaDePagamento || undefined,
-        classificacao: !ehSobra && tipo === 'GASTO' ? classificacao : '',
-        parcelas: quantidadeDeParcelas,
+        classificacao: !ehSobra && tipo === 'GASTO' ? classificacao : ('' as const),
         ehSobraDoMesAnterior: ehSobra,
-      });
+      };
 
-      if (criadas.length > 1) {
+      const criadas = emEdicao
+        ? [await editarTransacao(emEdicao.id, dados)]
+        : await criarTransacao({ ...dados, parcelas: quantidadeDeParcelas });
+
+      if (emEdicao) {
+        setAviso(`"${dados.descricao}" atualizado.`);
+        setEmEdicao(null);
+      } else if (criadas.length > 1) {
         // Só as parcelas do mês em foco aparecem na lista; sem este aviso,
         // parece que 11 delas se perderam.
         // Nas parcelas com vencimento, a data da compra é a mesma em todas —
@@ -252,16 +420,22 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
         );
       }
 
-      // Limpa só o que muda de um lançamento para o outro; data, tipo e forma
-      // de pagamento costumam se repetir quando se lança vários seguidos.
-      setDescricao('');
-      setValor('');
-      setCategoria('');
-      setParcelas('1');
+      if (emEdicao) {
+        // Data, tipo e forma vieram do lançamento editado; deixá-los no
+        // formulário faria o próximo lançamento novo herdar o que era dele.
+        limparFormulario();
+      } else {
+        // Limpa só o que muda de um lançamento para o outro; data, tipo e forma
+        // de pagamento costumam se repetir quando se lança vários seguidos.
+        setDescricao('');
+        setValor('');
+        setCategoria('');
+        setParcelas('1');
+        setVencimento('');
+      }
       // A categoria e a forma recém-digitadas acabaram de virar opção no
       // backend; isto é o que as traz para a lista sem recarregar a página.
       recarregarSugestoes();
-      setVencimento('');
 
       /*
        * Se o lançamento caiu fora do mês em foco, mostra o mês dele para que
@@ -270,7 +444,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
        * Com vencimento, o mês é o DELE: lançar hoje uma conta que vence mês
        * que vem leva a tela para o mês que vem, que é onde ela está.
        */
-      const mesDoLancamento = (vencimento || dataUsada).slice(0, 7);
+      const mesDoLancamento = (vencimentoUsado || dataUsada).slice(0, 7);
       if (mesDoLancamento !== mes) {
         setCarregando(true);
         aoTrocarMes(mesDoLancamento);
@@ -287,10 +461,11 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
   async function aoAlternarStatus(transacao: Transacao) {
     setErroDaLista(null);
     try {
-      await alterarStatusTransacao(
-        transacao.id,
-        transacao.status === 'CONCLUIDA' ? 'PENDENTE' : 'CONCLUIDA'
-      );
+      const novoStatus = transacao.status === 'CONCLUIDA' ? 'PENDENTE' : 'CONCLUIDA';
+      await alterarStatusTransacao(transacao.id, novoStatus);
+      // Se ele está aberto no formulário, a situação de lá também muda —
+      // senão salvar a edição desfaria o clique que acabou de acontecer.
+      if (emEdicao?.id === transacao.id) setStatus(novoStatus);
       recarregarLista();
     } catch (e) {
       setErroDaLista(e instanceof Error ? e.message : 'Não consegui atualizar.');
@@ -339,6 +514,14 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
       if (apagados > 1) {
         setAviso(`${apagados} parcelas apagadas.`);
       }
+      // Editar algo que não existe mais terminaria num 404 ao salvar.
+      if (
+        emEdicao &&
+        (emEdicao.id === transacao.id ||
+          (todasAsParcelas && emEdicao.grupoDeParcelas === transacao.grupoDeParcelas))
+      ) {
+        limparFormulario();
+      }
       recarregarLista();
     } catch (e) {
       setErroDaLista(e instanceof Error ? e.message : 'Não consegui excluir.');
@@ -371,12 +554,162 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
       ),
   ].sort((a, b) => b.data.localeCompare(a.data));
 
+  // A ordem por data acima é a base; a do título clicado é aplicada por cima.
+  // Empate mantém a ordem por data: duas compras no "Mercado" seguem em ordem de dia.
+  const itensOrdenados = ordenarPor(itens, ordenacao, valorDaColuna);
+
   const quantidadePrevista = itens.filter((i) => i.especie === 'previsao').length;
+
+  /*
+   * O que está selecionado, separado pelo que cada ação consegue fazer.
+   * Uma seleção misturada é normal: cada botão conta e age só sobre as
+   * linhas em que ele faz sentido.
+   */
+  const itensSelecionados = itens.filter((i) => selecionados.has(i.chave));
+  const transacoesSelecionadas = itensSelecionados.flatMap((i) =>
+    i.especie === 'lancamento' ? [i.transacao] : []
+  );
+  const previsoesSelecionadas = itensSelecionados.flatMap((i) =>
+    i.especie === 'previsao' ? [i.previsao] : []
+  );
+  const pendentesSelecionadas = transacoesSelecionadas.filter((t) => t.status === 'PENDENTE');
+  const concluidasSelecionadas = transacoesSelecionadas.filter((t) => t.status === 'CONCLUIDA');
+  // Previsão entra no "marcar pago" (vira lançamento), mas não no excluir:
+  // ela é uma recorrência, e quem a desliga é a aba Recorrências.
+  const quantidadeAConcluir = pendentesSelecionadas.length + previsoesSelecionadas.length;
+
+  const todosSelecionados = itens.length > 0 && itensSelecionados.length === itens.length;
+  const algunsSelecionados = itensSelecionados.length > 0 && !todosSelecionados;
+
+  // "Parcialmente marcado" não existe como atributo de HTML, só como
+  // propriedade do elemento — por isso o ref, em vez de uma prop do JSX.
+  useEffect(() => {
+    if (caixaDeTodos.current) caixaDeTodos.current.indeterminate = algunsSelecionados;
+  }, [algunsSelecionados]);
+
+  function alternarTodos() {
+    setSelecionados(todosSelecionados ? new Set() : new Set(itens.map((i) => i.chave)));
+  }
+
+  /** O rótulo segue o que está marcado: só gastos, só ganhos, ou os dois. */
+  const temGanhoAConcluir = [...pendentesSelecionadas, ...previsoesSelecionadas].some(
+    (x) => x.tipo === 'GANHO'
+  );
+  const temGastoAConcluir = [...pendentesSelecionadas, ...previsoesSelecionadas].some(
+    (x) => x.tipo === 'GASTO'
+  );
+  const rotuloDeConcluir =
+    temGanhoAConcluir && temGastoAConcluir
+      ? 'Marcar pago/recebido'
+      : temGanhoAConcluir
+        ? 'Marcar recebido'
+        : 'Marcar pago';
+
+  /**
+   * Roda uma ação em lote: trava os botões, limpa a seleção no fim e
+   * recarrega a lista mesmo se der erro no meio — parte pode ter mudado.
+   */
+  async function emLote(acao: () => Promise<string | null>) {
+    setErroDaLista(null);
+    setAviso(null);
+    setProcessandoLote(true);
+    try {
+      const mensagem = await acao();
+      if (mensagem) setAviso(mensagem);
+      setSelecionados(new Set());
+    } catch (e) {
+      setErroDaLista(e instanceof Error ? e.message : 'Não consegui concluir a ação.');
+    } finally {
+      setProcessandoLote(false);
+      recarregarLista();
+    }
+  }
+
+  function concluirSelecionados() {
+    return emLote(async () => {
+      const ids = pendentesSelecionadas.map((t) => t.id);
+      if (ids.length > 0) await alterarStatusDeVarias(ids, 'CONCLUIDA');
+
+      // Previsões não têm rota em lote: cada uma vira lançamento pela rota de
+      // sempre. Uma depois da outra, para um erro parar a fila no ponto exato.
+      for (const p of previsoesSelecionadas) {
+        await lancarRecorrencia(p.id, mes);
+      }
+
+      if (emEdicao && ids.includes(emEdicao.id)) setStatus('CONCLUIDA');
+
+      const n = quantidadeAConcluir;
+      const [singular, plural] =
+        rotuloDeConcluir === 'Marcar pago/recebido'
+          ? ['pago/recebido', 'pagos/recebidos']
+          : rotuloDeConcluir === 'Marcar recebido'
+            ? ['recebido', 'recebidos']
+            : ['pago', 'pagos'];
+      return n === 1
+        ? `1 lançamento marcado como ${singular}.`
+        : `${n} lançamentos marcados como ${plural}.`;
+    });
+  }
+
+  function reabrirSelecionados() {
+    return emLote(async () => {
+      const ids = concluidasSelecionadas.map((t) => t.id);
+      const alterados = await alterarStatusDeVarias(ids, 'PENDENTE');
+      if (emEdicao && ids.includes(emEdicao.id)) setStatus('PENDENTE');
+      return `${alterados} ${alterados === 1 ? 'lançamento reaberto' : 'lançamentos reabertos'}.`;
+    });
+  }
+
+  function excluirSelecionados() {
+    const quantidade = transacoesSelecionadas.length;
+    const temParcela = transacoesSelecionadas.some((t) => t.grupoDeParcelas !== null);
+
+    const confirmado = window.confirm(
+      `Apagar ${quantidade} ${quantidade === 1 ? 'lançamento' : 'lançamentos'}?` +
+        (temParcela
+          ? '\n\nDas compras parceladas, só as parcelas marcadas são apagadas — as dos outros meses continuam.'
+          : '') +
+        (previsoesSelecionadas.length > 0
+          ? '\n\nAs contas previstas marcadas ficam: elas vêm das recorrências.'
+          : '')
+    );
+    if (!confirmado) return;
+
+    return emLote(async () => {
+      const ids = transacoesSelecionadas.map((t) => t.id);
+      const apagados = await excluirVarias(ids);
+      if (emEdicao && ids.includes(emEdicao.id)) limparFormulario();
+      return `${apagados} ${apagados === 1 ? 'lançamento apagado' : 'lançamentos apagados'}.`;
+    });
+  }
+
+  /**
+   * Clique em qualquer ponto da linha abre a edição — menos nos controles
+   * que já têm função própria (caixinha, botões). Sem esta checagem, marcar
+   * a caixinha ou clicar em Excluir também abriria o formulário.
+   */
+  function aoClicarNaLinha(alvo: EventTarget, transacao: Transacao) {
+    if ((alvo as HTMLElement).closest('button, input, label, a')) return;
+    comecarEdicao(transacao);
+  }
 
   return (
     <>
-      <section className="cartao">
-        <h2>Novo lançamento</h2>
+      <section
+        ref={cartaoDoFormulario}
+        className={emEdicao ? 'cartao cartao--formulario cartao--em-edicao' : 'cartao cartao--formulario'}
+      >
+        <h2>{emEdicao ? 'Editar lançamento' : 'Novo lançamento'}</h2>
+
+        {/* Na edição, a parcela avisa que é uma só: as irmãs são lançamentos
+            à parte, e mudar o valor desta não mexe nas outras. */}
+        {emEdicao?.grupoDeParcelas && (
+          <p className="explicacao">
+            Esta é a parcela{' '}
+            <strong>{rotuloDaParcela(emEdicao.parcelaAtual, emEdicao.parcelasTotais)}</strong>.
+            Salvar muda só ela; as outras parcelas da compra continuam como estão.
+          </p>
+        )}
 
         <form onSubmit={aoEnviar}>
           {/* Numa sobra, descrição, data e categoria são sempre as mesmas, e
@@ -386,6 +719,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
               <label className="campo campo--largo">
                 <span>Descrição</span>
                 <input
+                  ref={campoDeDescricao}
                   type="text"
                   placeholder="Ex: Netflix"
                   value={descricao}
@@ -535,6 +869,9 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                     />
                   </label>
 
+                  {/* Parcelar é decisão de quem cria a compra: na edição o
+                      controle some, e a parcela aberta é editada sozinha. */}
+                  {!emEdicao && (
                   <label className="campo">
                     <span>Parcelas</span>
                     <div className="controle-parcelas" role="group" aria-label="Quantidade de parcelas">
@@ -569,6 +906,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                       </button>
                     </div>
                   </label>
+                  )}
                 </>
               )}
             </div>
@@ -585,9 +923,21 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
 
           {erroDoFormulario && <p className="mensagem-erro">{erroDoFormulario}</p>}
 
-          <button type="submit" disabled={salvando}>
-            {salvando ? 'Salvando…' : 'Adicionar lançamento'}
-          </button>
+          <div className="botoes-do-formulario">
+            <button type="submit" disabled={salvando}>
+              {salvando ? 'Salvando…' : emEdicao ? 'Salvar alterações' : 'Adicionar lançamento'}
+            </button>
+            {emEdicao && (
+              <button
+                type="button"
+                className="botao--discreto"
+                onClick={limparFormulario}
+                disabled={salvando}
+              >
+                Cancelar edição
+              </button>
+            )}
+          </div>
         </form>
       </section>
 
@@ -632,7 +982,7 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
           </label>
         </div>
 
-        {aviso && <p className="mensagem-aviso">{aviso}</p>}
+        <AvisoTemporario texto={aviso} />
         {carregando && <p className="vazio">Carregando…</p>}
         {erroDaLista && <p className="mensagem-erro">{erroDaLista}</p>}
 
@@ -641,28 +991,123 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
         )}
 
         {!carregando && !erroDaLista && itens.length > 0 && (
+          <div className="barra-de-lote">
+            <label className="barra-de-lote__todos">
+              <input
+                ref={caixaDeTodos}
+                type="checkbox"
+                checked={todosSelecionados}
+                onChange={alternarTodos}
+              />
+              {itensSelecionados.length === 0
+                ? 'Selecionar todos'
+                : `${itensSelecionados.length} ${
+                    itensSelecionados.length === 1 ? 'selecionado' : 'selecionados'
+                  }`}
+            </label>
+
+            {/* Cada botão aparece só quando há linha em que ele faz sentido,
+                e diz quantas: "Reabrir (2)" numa seleção de 5 avisa que 3
+                delas não vão mudar. */}
+            {itensSelecionados.length > 0 && (
+              <div className="acoes">
+                {quantidadeAConcluir > 0 && (
+                  <button
+                    type="button"
+                    className="botao--discreto botao--acao botao--acao-concluir"
+                    disabled={processandoLote}
+                    onClick={concluirSelecionados}
+                  >
+                    <Check weight="bold" aria-hidden="true" />
+                    {rotuloDeConcluir} ({quantidadeAConcluir})
+                  </button>
+                )}
+                {concluidasSelecionadas.length > 0 && (
+                  <button
+                    type="button"
+                    className="botao--discreto botao--acao botao--acao-reabrir"
+                    disabled={processandoLote}
+                    onClick={reabrirSelecionados}
+                  >
+                    <ArrowCounterClockwise weight="bold" aria-hidden="true" />
+                    Reabrir ({concluidasSelecionadas.length})
+                  </button>
+                )}
+                {transacoesSelecionadas.length > 0 && (
+                  <button
+                    type="button"
+                    className="botao--discreto botao--perigo botao--acao botao--acao-excluir"
+                    disabled={processandoLote}
+                    onClick={excluirSelecionados}
+                  >
+                    <Trash weight="bold" aria-hidden="true" />
+                    Excluir ({transacoesSelecionadas.length})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!carregando && !erroDaLista && itens.length > 0 && (
           <div className="tabela-rolavel">
             <table className="tabela">
               <thead>
                 <tr>
-                  <th>Data</th>
-                  <th>Descrição</th>
-                  <th>Categoria</th>
-                  <th>Pagamento</th>
-                  <th className="alinhado-direita">Valor</th>
-                  <th>Situação</th>
+                  {/* A caixinha de "todos" mora na barra acima da tabela, que
+                      continua visível no celular — aqui o cabeçalho some. */}
+                  <th className="celula-selecao" aria-label="Seleção" />
+                  {(
+                    [
+                      ['vencimento', 'Vencimento'],
+                      ['compra', 'Compra'],
+                      ['descricao', 'Descrição'],
+                      ['categoria', 'Categoria'],
+                      ['pagamento', 'Pagamento'],
+                      ['valor', 'Valor'],
+                      ['situacao', 'Situação'],
+                    ] as const
+                  ).map(([coluna, rotulo]) => (
+                    <TituloOrdenavel
+                      key={coluna}
+                      coluna={coluna}
+                      rotulo={rotulo}
+                      ordenacao={ordenacao}
+                      aoClicar={alternarOrdenacao}
+                      alinhadoDireita={coluna === 'valor'}
+                    />
+                  ))}
                   <th className="alinhado-direita">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {itens.map((item) => {
+                {itensOrdenados.map((item) => {
                   // --- Conta prevista: ainda não existe como lançamento ---
                   if (item.especie === 'previsao') {
                     const p = item.previsao;
 
                     return (
-                      <tr key={item.chave} className="linha--prevista">
-                        <td data-rotulo="Data">{formatarData(p.data)}</td>
+                      <tr
+                        key={item.chave}
+                        className={
+                          selecionados.has(item.chave)
+                            ? 'linha--prevista linha--selecionada'
+                            : 'linha--prevista'
+                        }
+                      >
+                        <td className="celula-selecao" data-rotulo="Selecionar">
+                          <input
+                            type="checkbox"
+                            checked={selecionados.has(item.chave)}
+                            onChange={() => alternarSelecao(item.chave)}
+                            aria-label={`Selecionar ${p.descricao}`}
+                          />
+                        </td>
+                        <td data-rotulo="Vencimento">{formatarData(p.data)}</td>
+                        {/* Previsão ainda não aconteceu, então não tem compra
+                            de verdade: mostra o dia em que ela cai, que é a
+                            data que ela recebe ao ser lançada. */}
+                        <td data-rotulo="Compra">{formatarData(p.data)}</td>
                         <td>
                           {p.descricao}
                           <span className="etiqueta">Previsto</span>
@@ -704,19 +1149,43 @@ function Lancamentos({ mes, aoTrocarMes }: Props) {
                   const t = item.transacao;
                   const parcela = rotuloDaParcela(t.parcelaAtual, t.parcelasTotais);
 
+                  const classesDaLinha = [
+                    'linha--editavel',
+                    selecionados.has(item.chave) && 'linha--selecionada',
+                    emEdicao?.id === t.id && 'linha--em-edicao',
+                  ]
+                    .filter(Boolean)
+                    .join(' ');
+
                   return (
-                    <tr key={item.chave}>
-                      <td data-rotulo="Data">
-                        {formatarData(t.vencimento ?? t.data)}
-                        {/* A data da compra vira nota: quem manda na lista e
-                            no balanço é o vencimento, mas saber quando a
-                            compra foi feita continua importando. */}
-                        {t.vencimento && (
-                          <span className="marcador"> compra {formatarData(t.data)}</span>
-                        )}
+                    <tr
+                      key={item.chave}
+                      className={classesDaLinha}
+                      onClick={(e) => aoClicarNaLinha(e.target, t)}
+                    >
+                      <td className="celula-selecao" data-rotulo="Selecionar">
+                        <input
+                          type="checkbox"
+                          checked={selecionados.has(item.chave)}
+                          onChange={() => alternarSelecao(item.chave)}
+                          aria-label={`Selecionar ${t.descricao}`}
+                        />
                       </td>
+                      {/* Sem vencimento, o dinheiro se move no dia da compra —
+                          por isso as duas colunas podem mostrar a mesma data. */}
+                      <td data-rotulo="Vencimento">{formatarData(t.vencimento ?? t.data)}</td>
+                      <td data-rotulo="Compra">{formatarData(t.data)}</td>
                       <td>
-                        {t.descricao}
+                        {/* O clique na linha já abre a edição; este botão é o
+                            mesmo caminho para quem navega pelo teclado. */}
+                        <button
+                          type="button"
+                          className="botao-de-edicao"
+                          onClick={() => comecarEdicao(t)}
+                          title="Editar este lançamento"
+                        >
+                          {t.descricao}
+                        </button>
                         {parcela && <span className="marcador"> {parcela}</span>}
                         {t.ehSobraDoMesAnterior && (
                           <span

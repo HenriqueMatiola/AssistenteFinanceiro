@@ -359,6 +359,42 @@ export async function alterarStatusTransacao(
 }
 
 /**
+ * Regrava um lançamento existente. Usa os mesmos campos da criação, menos o
+ * parcelamento: editar uma parcela muda só ela.
+ */
+export async function editarTransacao(
+  id: number,
+  dados: Omit<NovaTransacao, 'parcelas'>
+): Promise<Transacao> {
+  const resposta = await chamar<{ transacao: Transacao }>(`/api/transacoes/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(dados),
+  });
+  return resposta.transacao;
+}
+
+/** Marca vários como pagos/recebidos (ou reabre vários) numa requisição só. */
+export async function alterarStatusDeVarias(
+  ids: number[],
+  status: StatusTransacao
+): Promise<number> {
+  const resposta = await chamar<{ alterados: number }>('/api/transacoes', {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, status }),
+  });
+  return resposta.alterados;
+}
+
+/** Apaga exatamente os lançamentos indicados — parcela por parcela. */
+export async function excluirVarias(ids: number[]): Promise<number> {
+  const resposta = await chamar<{ apagados: number }>('/api/transacoes', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids }),
+  });
+  return resposta.apagados;
+}
+
+/**
  * Exclui um lançamento. Com `todasAsParcelas`, apaga a compra parcelada
  * inteira em vez de só a parcela apontada.
  */
@@ -513,6 +549,35 @@ export async function alternarRecorrencia(id: number, ativa: boolean): Promise<R
     body: JSON.stringify({ ativa }),
   });
   return resposta.recorrencia;
+}
+
+/** Regrava a recorrência. Não mexe em `ativa`, nem nos lançamentos já feitos. */
+export async function editarRecorrencia(
+  id: number,
+  dados: NovaRecorrencia
+): Promise<Recorrencia> {
+  const resposta = await chamar<{ recorrencia: Recorrencia }>(`/api/recorrencias/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(dados),
+  });
+  return resposta.recorrencia;
+}
+
+/** Liga ou desliga várias numa requisição só. */
+export async function alternarVariasRecorrencias(ids: number[], ativa: boolean): Promise<number> {
+  const resposta = await chamar<{ alteradas: number }>('/api/recorrencias', {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, ativa }),
+  });
+  return resposta.alteradas;
+}
+
+export async function excluirVariasRecorrencias(ids: number[]): Promise<number> {
+  const resposta = await chamar<{ apagadas: number }>('/api/recorrencias', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids }),
+  });
+  return resposta.apagadas;
 }
 
 export async function excluirRecorrencia(id: number): Promise<void> {
@@ -778,7 +843,7 @@ export async function criarAcerto(novo: NovoAcerto): Promise<Acerto> {
 /** Corrige quem, quanto ou para quê, sem perder o histórico de pagamentos. */
 export async function atualizarAcerto(
   id: number,
-  mudancas: { pessoa?: string; valor?: number; descricao?: string | null }
+  mudancas: { tipo?: TipoDeAcerto; pessoa?: string; valor?: number; descricao?: string | null }
 ): Promise<Acerto> {
   const resposta = await chamar<{ acerto: Acerto }>(`/api/acertos/${id}`, {
     method: 'PATCH',
@@ -807,6 +872,19 @@ export async function registrarBaixa(
     method: 'POST',
     body: JSON.stringify(baixa),
   });
+  return resposta.acerto;
+}
+
+/** Corrige a data ou o valor de um pagamento. Devolve o acerto atualizado. */
+export async function editarBaixa(
+  acertoId: number,
+  baixaId: number,
+  baixa: { data: string; valor: number }
+): Promise<Acerto> {
+  const resposta = await chamar<{ acerto: Acerto }>(
+    `/api/acertos/${acertoId}/baixas/${baixaId}`,
+    { method: 'PATCH', body: JSON.stringify(baixa) }
+  );
   return resposta.acerto;
 }
 

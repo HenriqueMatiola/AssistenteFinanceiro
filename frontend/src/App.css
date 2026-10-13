@@ -358,9 +358,10 @@
   flex-direction: column;
 }
 
+/* Sem largura máxima: a tabela de Lançamentos tem nove colunas, e cada
+   pixel que sobra à direita é um pixel a menos para elas. */
 .conteudo {
   padding: 1.5rem 2rem 4rem;
-  max-width: 1100px;
   width: 100%;
 }
 
@@ -1559,6 +1560,42 @@ button {
   vertical-align: middle;
 }
 
+/* Título que ordena a coluna. Por fora continua igual aos outros títulos —
+   é um botão só para o teclado e o leitor de tela saberem que dá para
+   clicar. O seletor leva `.conteudo` para vencer o hover genérico dos botões,
+   que pintaria um fundo e uma borda aqui. */
+.tabela th .titulo-ordenavel,
+.conteudo .titulo-ordenavel:hover:enabled,
+.conteudo .titulo-ordenavel:focus-visible:enabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+.conteudo .titulo-ordenavel:hover:enabled,
+.tabela th .titulo-ordenavel--ativo {
+  color: var(--texto);
+}
+
+/* Na coluna parada, a seta dupla fica apagada: diz "dá para ordenar" sem
+   competir com a seta da coluna que está mandando. */
+.titulo-ordenavel__neutro {
+  opacity: 0.35;
+  transition: opacity 160ms var(--sai);
+}
+
+.titulo-ordenavel:hover .titulo-ordenavel__neutro,
+.titulo-ordenavel:focus-visible .titulo-ordenavel__neutro {
+  opacity: 0.8;
+}
+
 .tabela tbody tr:last-child td {
   border-bottom: none;
 }
@@ -1568,6 +1605,12 @@ button {
 }
 
 .alinhado-direita {
+  text-align: right;
+}
+
+/* `.tabela th` (0,1,1) venceria a regra acima (0,1,0) e deixaria o título da
+   coluna de dinheiro à esquerda, longe dos números que ele nomeia. */
+.tabela th.alinhado-direita {
   text-align: right;
 }
 
@@ -1599,6 +1642,12 @@ button {
 .linha--desligada .acoes,
 .linha--desligada .acoes button {
   text-decoration: none;
+}
+
+/* A descrição clicável é um botão, e botão não herda o risco do `td` —
+   sem esta regra, só ela ficaria sem riscar na linha desligada. */
+.linha--desligada .botao-de-edicao {
+  text-decoration: line-through;
 }
 
 /* ==========================================================================
@@ -1680,6 +1729,29 @@ button {
   background: var(--ambar-fundo);
   color: var(--ambar);
   margin: 0.6rem 0;
+}
+
+/* Aviso que some sozinho. A duração vem do React (`animation-duration` no
+   style), para o esmaecer terminar junto com o timer que tira o aviso da
+   tela. Ele só começa nos últimos ~8%: antes disso, o aviso é para ler. */
+.mensagem-aviso--temporaria {
+  animation: aviso-esmaece both linear;
+}
+
+@keyframes aviso-esmaece {
+  0%,
+  92% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mensagem-aviso--temporaria {
+    animation: none;
+  }
 }
 
 /* Confirmação de que algo foi gravado. Verde, a mesma cor que no resto do app
@@ -1871,6 +1943,112 @@ button {
   box-shadow: inset 3px 0 0 var(--ambar-forte);
 }
 
+/* --- Seleção, edição e ações em lote (Lançamentos) --- */
+
+/* A linha inteira abre a edição; o cursor é o único aviso de que dá. */
+.linha--editavel {
+  cursor: pointer;
+}
+
+.linha--selecionada td {
+  background: color-mix(in srgb, var(--edicao) 9%, transparent);
+}
+
+/* A linha aberta no formulário lá em cima leva a mesma faixa lateral da
+   prevista, na cor de edição — quem rola de volta acha onde estava. */
+.linha--em-edicao td {
+  background: color-mix(in srgb, var(--edicao) 14%, transparent);
+}
+
+.linha--em-edicao td:first-child {
+  box-shadow: inset 3px 0 0 var(--edicao);
+}
+
+/* Coluna estreita: só o tamanho da caixinha. */
+.tabela .celula-selecao {
+  width: 1%;
+  padding-right: 0.2rem;
+}
+
+.celula-selecao input,
+.barra-de-lote__todos input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--edicao);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* A descrição é um botão (para o teclado chegar à edição), mas por fora
+   continua sendo o texto da linha. `.conteudo` no seletor vence o hover
+   genérico dos botões, que pintaria fundo e borda. */
+.tabela .botao-de-edicao,
+.conteudo .botao-de-edicao:hover:enabled,
+.conteudo .botao-de-edicao:focus-visible:enabled {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.conteudo .botao-de-edicao:hover:enabled {
+  text-decoration: underline;
+  text-decoration-color: var(--borda-forte);
+  text-underline-offset: 3px;
+}
+
+/* A faixa que aparece entre os filtros e a tabela. A altura mínima é a de
+   um botão de ação: sem ela, a lista pularia para baixo no momento em que
+   a primeira caixinha é marcada e os botões surgem. */
+.barra-de-lote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  min-height: 2rem;
+  margin-bottom: 0.6rem;
+  padding: 0 0.6rem;
+}
+
+.barra-de-lote__todos {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+  cursor: pointer;
+}
+
+/* À esquerda: quando a faixa quebra em duas linhas (celular), os botões
+   ficam logo abaixo do "N selecionados" a que se referem. */
+.barra-de-lote .acoes {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* O formulário em modo edição: borda na cor de edição, para não se
+   confundir com o de criar. */
+.cartao--em-edicao {
+  border-color: var(--edicao);
+}
+
+/* Ao abrir a edição, a página rola até o formulário — esta folga o deixa
+   abaixo da barra superior, que é fixa e o cobriria. */
+.cartao--formulario {
+  scroll-margin-top: calc(var(--barra-altura) + 1rem);
+}
+
+.botoes-do-formulario {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
 /* Números que não são dinheiro com cor (quantidade, preço médio, cotação):
    mono para alinhar as colunas, sem o verde/vermelho que significa resultado. */
 .numero {
@@ -2000,8 +2178,37 @@ button {
   }
 
   /* Sem cabeçalho, a linha riscada inteira fica ilegível; basta a opacidade. */
-  .linha--desligada td {
+  .linha--desligada td,
+  .linha--desligada .botao-de-edicao {
     text-decoration: none;
+  }
+
+  /* A caixinha de seleção desce para perto dos botões, no pé do cartão — é
+     ação, como eles. E volta a ocupar a largura, como as outras células. */
+  .tabela .celula-selecao {
+    order: 98;
+    width: 100%;
+    padding: 0.25rem 0;
+  }
+
+  /* Seleção e edição pintam o CARTÃO, e não cada célula: pintando célula por
+     célula, a margem interna do cartão ficaria sem cor. */
+  .tabela tr.linha--selecionada {
+    background: color-mix(in srgb, var(--edicao) 9%, var(--superficie));
+  }
+
+  .tabela tr.linha--em-edicao {
+    border-left: 3px solid var(--edicao);
+    background: color-mix(in srgb, var(--edicao) 14%, var(--superficie));
+  }
+
+  .linha--selecionada td,
+  .linha--em-edicao td {
+    background: transparent;
+  }
+
+  .linha--em-edicao td:first-child {
+    box-shadow: none;
   }
 }
 
@@ -2329,8 +2536,14 @@ code {
    não é ação do dia a dia, e uma fileira de X vermelhos daria ao histórico
    cara de lista de pendências. Continua focável e com rótulo para quem navega
    por teclado ou leitor de tela. */
-.acerto__desfazer {
+/* Corrigir (lápis) e apagar (X) andam juntos, encostados à direita. */
+.acerto__baixa-acoes {
   margin-left: auto;
+  display: flex;
+  gap: 0.15rem;
+}
+
+.acerto__desfazer {
   padding: 0.15rem 0.35rem;
   opacity: 0;
   transition: opacity 160ms ease;
@@ -2348,6 +2561,31 @@ code {
   }
 }
 
+/* "Ver mais N pagamentos": discreto e do tamanho do texto do histórico, para
+   não competir com o botão de registrar lá embaixo. */
+.acerto__ver-mais {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.8rem;
+  margin-top: 0.1rem;
+}
+
+/* O topo do cartão abre a edição (o botão "Editar" é o caminho do teclado). */
+.acerto__topo--editavel {
+  cursor: pointer;
+}
+
+.acerto__topo--editavel:hover .acerto__pessoa {
+  text-decoration: underline;
+  text-decoration-color: var(--borda-forte);
+  text-underline-offset: 3px;
+}
+
+/* O cartão aberto no formulário lá de cima: mesma cor de edição das tabelas. */
+.acerto--em-edicao {
+  border-color: var(--edicao);
+  box-shadow: inset 3px 0 0 var(--edicao);
+}
+
 /* --- Registrar um pagamento --- */
 
 .acerto__form {
@@ -2362,6 +2600,15 @@ code {
 
 .acerto__form .campo {
   margin: 0;
+}
+
+/* Corrigindo um pagamento: o formulário ocupa o lugar da linha, numa caixa
+   própria em vez do traço em cima que separa o "registrar" do histórico. */
+.acerto__form--correcao {
+  margin: 0.2rem 0;
+  padding: 0.6rem;
+  border: 1px solid var(--edicao);
+  border-radius: var(--raio-pequeno);
 }
 
 /* O erro ocupa a linha inteira, em vez de se espremer entre dois botões. */

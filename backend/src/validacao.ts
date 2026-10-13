@@ -196,6 +196,27 @@ export function validarId(bruto: unknown): number {
   return numero;
 }
 
+/** Quantos ids uma ação em lote aceita de uma vez. Um mês cheio cabe com folga. */
+export const IDS_MAXIMOS_POR_LOTE = 500;
+
+/**
+ * Lista de ids para as ações em lote (marcar pago, reabrir, excluir vários).
+ *
+ * Repetidos são descartados em vez de recusados: marcar o mesmo lançamento
+ * duas vezes como pago não é erro de quem pediu. O teto existe para uma
+ * requisição maluca não virar um `WHERE id IN (...)` de um milhão de itens.
+ */
+export function validarIds(bruto: unknown): number[] {
+  if (!Array.isArray(bruto) || bruto.length === 0) {
+    throw new ErroDeValidacao('Selecione ao menos um item.');
+  }
+  if (bruto.length > IDS_MAXIMOS_POR_LOTE) {
+    throw new ErroDeValidacao(`Informe no máximo ${IDS_MAXIMOS_POR_LOTE} itens por vez.`);
+  }
+
+  return [...new Set(bruto.map(validarId))];
+}
+
 // --- Campos de lançamento ---------------------------------------------------
 
 /** Quantas parcelas um lançamento pode ter, no máximo. */

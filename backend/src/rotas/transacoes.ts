@@ -19,6 +19,7 @@ import {
   validarDescricao,
   validarFormaDePagamento,
   validarId,
+  validarIds,
   validarParcelas,
   validarStatus,
   validarTipo,
@@ -255,6 +256,105 @@ rotasDeTransacoes.post('/', async (req, res) => {
     res.status(201).json({ transacoes: criadas.map(paraResposta) });
   } catch (erro) {
     responderErro(res, erro, 'criar a transação');
+  }
+});
+
+/**
+ * PATCH /api/transacoes  { "ids": [1, 2, 3], "status": "CONCLUIDA" }
+ * Marca vários como pagos (ou reabre vários) de uma vez.
+ *
+ * Um `updateMany` só, e não um laço de PATCH por id: é uma ida ao banco, e ou
+ * todos mudam ou nenhum muda. Ids de outra conta não dão erro — o filtro por
+ * `usuarioId` simplesmente não os alcança, e eles ficam fora da contagem.
+ */
+rotasDeTransacoes.patch('/', async (req, res) => {
+  try {
+    const corpo = req.body as Record<string, unknown>;
+    const ids = validarIds(corpo['ids']);
+    const status = validarStatus(corpo['status']);
+
+    const { count } = await prisma.transacao.updateMany({
+      where: { id: { in: ids }, usuarioId: idDoUsuarioLogado(req) },
+      data: { status },
+    });
+
+    res.json({ alterados: count });
+  } catch (erro) {
+    responderErro(res, erro, 'atualizar os lançamentos');
+  }
+});
+
+/**
+ * DELETE /api/transacoes  { "ids": [1, 2, 3] }
+ * Apaga exatamente as linhas pedidas. Numa compra parcelada, apaga só as
+ * parcelas selecionadas — quem quer a compra inteira usa o Excluir da linha,
+ * que pergunta.
+ */
+rotasDeTransacoes.delete('/', async (req, res) => {
+  try {
+    const ids = validarIds((req.body as Record<string, unknown>)['ids']);
+
+    const { count } = await prisma.transacao.deleteMany({
+      where: { id: { in: ids }, usuarioId: idDoUsuarioLogado(req) },
+    });
+
+    res.json({ apagados: count });
+  } catch (erro) {
+    responderErro(res, erro, 'excluir os lançamentos');
+  }
+});
+
+/**
+ * PUT /api/transacoes/:id — regrava um lançamento com o que veio da tela.
+ *
+ * Valida campo por campo como a criação, para a edição não virar uma porta
+ * dos fundos para dados que o POST recusaria. O parcelamento NÃO se edita:
+ * parcela atual, total e grupo ficam como estavam. Mudar o valor de uma
+ * parcela muda só ela — as outras são lançamentos à parte.
+ */
+rotasDeTransacoes.put('/:id', async (req, res) => {
+  try {
+    const id = validarId(req.params.id);
+    const usuarioId = idDoUsuarioLogado(req);
+    const corpo = req.body as Record<string, unknown>;
+
+    await exigirTransacaoDoUsuario(id, usuarioId);
+
+    const data = validarData(corpo['data']);
+    const ehSobraDoMesAnterior = corpo['ehSobraDoMesAnterior'] === true;
+
+    const campos = {
+      data,
+      vencimento: validarVencimento(corpo['vencimento'], data),
+      descricao: validarDescricao(corpo['descricao']),
+      valor: validarValor(corpo['valor']),
+      categoria: validarCategoria(corpo['categoria']),
+      tipo: validarTipo(corpo['tipo']),
+      status: validarStatus(corpo['status']),
+      formaDePagamento: validarFormaDePagamento(corpo['formaDePagamento']),
+      classificacao: validarClassificacao(corpo['classificacao']),
+      ehSobraDoMesAnterior,
+    };
+
+    // Uma categoria corrigida na edição também passa a ser oferecida.
+    if (!ehSobraDoMesAnterior) {
+      await registrarSugestao(usuarioId, CampoComSugestao.CATEGORIA, campos.categoria);
+      await registrarSugestao(
+        usuarioId,
+        CampoComSugestao.FORMA_DE_PAGAMENTO,
+        campos.formaDePagamento
+      );
+    }
+
+    const transacao = await prisma.transacao.update({ where: { id }, data: campos });
+
+    res.json({ transacao: paraResposta(transacao) });
+  } catch (erro) {
+    if (erro instanceof TransacaoNaoEncontrada) {
+      res.status(404).json({ erro: 'Lançamento não encontrado.' });
+      return;
+    }
+    responderErro(res, erro, 'editar o lançamento');
   }
 });
 

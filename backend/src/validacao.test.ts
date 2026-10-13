@@ -12,6 +12,7 @@ import {
   ErroDeValidacao,
   validarData,
   validarDiaDoMes,
+  validarIds,
   validarMes,
   validarParcelas,
   validarValor,
@@ -126,5 +127,29 @@ describe('validarVencimento', () => {
 
   it('recusa data inexistente, como qualquer outro campo de data', () => {
     assert.throws(() => validarVencimento('2026-02-31', COMPRA), ErroDeValidacao);
+  });
+});
+
+describe('validarIds', () => {
+  it('aceita uma lista de ids e descarta os repetidos', () => {
+    assert.deepEqual(validarIds([3, 1, 3]), [3, 1]);
+  });
+
+  it('recusa lista vazia e o que não é lista', () => {
+    assert.throws(() => validarIds([]), ErroDeValidacao);
+    assert.throws(() => validarIds(undefined), ErroDeValidacao);
+    assert.throws(() => validarIds(5), ErroDeValidacao);
+  });
+
+  it('recusa a lista inteira se um id for inválido', () => {
+    // Fazer metade do pedido em silêncio seria pior que recusar o pedido.
+    assert.throws(() => validarIds([1, 0]), ErroDeValidacao);
+    assert.throws(() => validarIds([1, 'abc']), ErroDeValidacao);
+    assert.throws(() => validarIds([1, 2.5]), ErroDeValidacao);
+  });
+
+  it('recusa acima do teto por requisição', () => {
+    const muitos = Array.from({ length: 501 }, (_, i) => i + 1);
+    assert.throws(() => validarIds(muitos), ErroDeValidacao);
   });
 });

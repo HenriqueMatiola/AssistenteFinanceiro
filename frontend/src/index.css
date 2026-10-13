@@ -25,6 +25,11 @@
      precisa clarear, senão o petróleo some contra a superfície. */
   --mes-ativo: var(--petroleo-800);
 
+  /* A linha em edição e as linhas selecionadas na tabela de Lançamentos.
+     Petróleo, e não âmbar: âmbar significa "pendente", e uma linha aberta no
+     formulário não está devendo nada. */
+  --edicao: var(--petroleo-600);
+
   /* --- Âmbar: a cor da ação ---
      Reservado para o que ainda não foi pago. Usado em mais lugares, viraria
      enfeite e pararia de significar "isto exige algo de você". */
@@ -128,6 +133,7 @@
     --ambar-halo: rgba(232, 163, 61, 0.45);
     --saida-fundo: #331a18;
     --mes-ativo: var(--petroleo-600);
+    --edicao: var(--petroleo-300);
 
     /* Os mesmos seis matizes das séries, reescalados para o fundo escuro e
        validados de novo contra ele — os tons claros perderiam contraste aqui,

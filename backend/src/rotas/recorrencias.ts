@@ -22,6 +22,7 @@ import {
   validarDiaDoMes,
   validarFormaDePagamento,
   validarId,
+  validarIds,
   mesAtualUTC,
   validarMes,
   validarStatus,
@@ -172,6 +173,99 @@ rotasDeRecorrencias.post('/', async (req, res) => {
     res.status(201).json({ recorrencia: paraResposta(recorrencia) });
   } catch (erro) {
     responderErro(res, erro, 'criar a recorrência');
+  }
+});
+
+/**
+ * PATCH /api/recorrencias  { "ids": [1, 2], "ativa": false }
+ * Liga ou desliga várias de uma vez, num `updateMany` só. Ids de outra conta
+ * não dão erro: o filtro por `usuarioId` não os alcança e eles ficam fora da
+ * contagem — mesmo desenho das ações em lote de Lançamentos.
+ */
+rotasDeRecorrencias.patch('/', async (req, res) => {
+  try {
+    const corpo = req.body as Record<string, unknown>;
+    const ids = validarIds(corpo['ids']);
+    const ativa = corpo['ativa'];
+
+    if (typeof ativa !== 'boolean') {
+      throw new ErroDeValidacao('Informe `ativa` como true ou false.');
+    }
+
+    const { count } = await prisma.recorrencia.updateMany({
+      where: { id: { in: ids }, usuarioId: idDoUsuarioLogado(req) },
+      data: { ativa },
+    });
+
+    res.json({ alteradas: count });
+  } catch (erro) {
+    responderErro(res, erro, 'atualizar as recorrências');
+  }
+});
+
+/**
+ * DELETE /api/recorrencias  { "ids": [1, 2] }
+ * Apaga várias de vez. Os lançamentos que nasceram delas continuam: o vínculo
+ * vira nulo (`onDelete: SetNull` no schema), e o dinheiro gasto não "desacontece".
+ */
+rotasDeRecorrencias.delete('/', async (req, res) => {
+  try {
+    const ids = validarIds((req.body as Record<string, unknown>)['ids']);
+
+    const { count } = await prisma.recorrencia.deleteMany({
+      where: { id: { in: ids }, usuarioId: idDoUsuarioLogado(req) },
+    });
+
+    res.json({ apagadas: count });
+  } catch (erro) {
+    responderErro(res, erro, 'excluir as recorrências');
+  }
+});
+
+/**
+ * PUT /api/recorrencias/:id — regrava a recorrência com o que veio da tela.
+ *
+ * Mesmas validações da criação. `ativa` fica de fora: ligar e desligar têm
+ * botão próprio, e editar o valor não deveria religar uma conta cancelada.
+ *
+ * Os lançamentos que já nasceram desta recorrência NÃO mudam — são fatos de
+ * meses passados. A mudança vale para as previsões e para a Projeção.
+ */
+rotasDeRecorrencias.put('/:id', async (req, res) => {
+  try {
+    const id = validarId(req.params.id);
+    const usuarioId = idDoUsuarioLogado(req);
+    const corpo = req.body as Record<string, unknown>;
+
+    await exigirRecorrenciaDoUsuario(id, usuarioId);
+
+    const recorrencia = await prisma.recorrencia.update({
+      where: { id },
+      data: {
+        descricao: validarDescricao(corpo['descricao']),
+        valor: validarValor(corpo['valor']),
+        categoria: validarCategoria(corpo['categoria']),
+        tipo: validarTipo(corpo['tipo']),
+        formaDePagamento: validarFormaDePagamento(corpo['formaDePagamento']),
+        classificacao: validarClassificacao(corpo['classificacao']),
+        diaDoMes: validarDiaDoMes(corpo['diaDoMes']),
+      },
+    });
+
+    await registrarSugestao(usuarioId, CampoComSugestao.CATEGORIA, recorrencia.categoria);
+    await registrarSugestao(
+      usuarioId,
+      CampoComSugestao.FORMA_DE_PAGAMENTO,
+      recorrencia.formaDePagamento
+    );
+
+    res.json({ recorrencia: paraResposta(recorrencia) });
+  } catch (erro) {
+    if (erro instanceof RecorrenciaNaoEncontrada) {
+      res.status(404).json({ erro: 'Recorrência não encontrada.' });
+      return;
+    }
+    responderErro(res, erro, 'editar a recorrência');
   }
 });
 

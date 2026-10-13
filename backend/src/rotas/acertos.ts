@@ -204,9 +204,22 @@ rotasDeAcertos.patch('/:id', async (req, res) => {
     const id = validarId(req.params.id);
     const atual = await buscarAcertoDoUsuario(id, usuarioId);
 
-    const corpo = req.body as { pessoa?: unknown; valor?: unknown; descricao?: unknown };
-    const dados: { pessoa?: string; valor?: string; descricao?: string | null } = {};
+    const corpo = req.body as {
+      tipo?: unknown;
+      pessoa?: unknown;
+      valor?: unknown;
+      descricao?: unknown;
+    };
+    const dados: {
+      tipo?: TipoDeAcerto;
+      pessoa?: string;
+      valor?: string;
+      descricao?: string | null;
+    } = {};
 
+    // O tipo também se corrige: cadastrar "a pagar" o que era "a receber"
+    // é um clique errado no seletor, e não motivo para perder o histórico.
+    if ('tipo' in corpo) dados.tipo = validarTipoDeAcerto(corpo.tipo);
     if ('pessoa' in corpo) dados.pessoa = validarPessoa(corpo.pessoa);
     if ('descricao' in corpo) dados.descricao = validarDescricaoOpcional(corpo.descricao);
 
@@ -236,6 +249,11 @@ rotasDeAcertos.patch('/:id', async (req, res) => {
       data: dados,
       include: { baixas: BAIXAS_EM_ORDEM },
     });
+
+    // Um nome corrigido aqui também passa a ser oferecido no campo "Quem".
+    if (dados.pessoa) {
+      await registrarSugestao(usuarioId, CampoComSugestao.PESSOA, dados.pessoa);
+    }
 
     res.json({ acerto: paraResposta(acerto) });
   } catch (erro) {
@@ -321,6 +339,68 @@ rotasDeAcertos.post('/:id/baixas', async (req, res) => {
     }
 
     responderErro(res, erro, 'registrar o pagamento');
+  }
+});
+
+/**
+ * PATCH /api/acertos/:id/baixas/:baixaId   { "data": "2026-09-03", "valor": 50 }
+ *
+ * Corrige um pagamento já registrado — a data ou o valor. Antes, o único
+ * conserto era apagar e registrar de novo.
+ *
+ * O teto é o mesmo de registrar: o pagamento não pode passar do que falta.
+ * Só que o "que falta" é contado SEM este pagamento — senão, num acerto de 100
+ * com uma baixa de 100, corrigir para 90 seria recusado (saldo zero).
+ */
+rotasDeAcertos.patch('/:id/baixas/:baixaId', async (req, res) => {
+  try {
+    const usuarioId = idDoUsuarioLogado(req);
+    const id = validarId(req.params.id);
+    const baixaId = validarId(req.params.baixaId);
+
+    const acerto = await buscarAcertoDoUsuario(id, usuarioId);
+
+    // A baixa precisa ser DESTE acerto — mesmo motivo da rota de apagar.
+    if (!acerto.baixas.some((b) => b.id === baixaId)) {
+      throw new BaixaNaoEncontrada();
+    }
+
+    const corpo = req.body as { data?: unknown; valor?: unknown };
+    const data = validarData(corpo.data);
+    const valor = Number(validarValor(corpo.valor));
+
+    const { saldo: saldoSemEsta } = consolidarAcerto(
+      acerto.valor.toNumber(),
+      acerto.baixas.filter((b) => b.id !== baixaId).map((b) => b.valor.toNumber())
+    );
+
+    if (!cabeNoSaldo(valor, saldoSemEsta)) {
+      throw new ErroDeValidacao(
+        `Contando os outros pagamentos, falta ${saldoSemEsta.toFixed(2)} neste acerto — ` +
+          'o valor não pode passar disso.'
+      );
+    }
+
+    await prisma.baixa.update({
+      where: { id: baixaId },
+      data: { data, valor: valor.toFixed(2) },
+    });
+
+    const atualizado = await buscarAcertoDoUsuario(id, usuarioId);
+
+    res.json({ acerto: paraResposta(atualizado) });
+  } catch (erro) {
+    if (erro instanceof AcertoNaoEncontrado) {
+      res.status(404).json({ erro: 'Acerto não encontrado.' });
+      return;
+    }
+
+    if (erro instanceof BaixaNaoEncontrada) {
+      res.status(404).json({ erro: 'Pagamento não encontrado neste acerto.' });
+      return;
+    }
+
+    responderErro(res, erro, 'corrigir o pagamento');
   }
 });
 
